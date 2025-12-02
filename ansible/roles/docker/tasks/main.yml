@@ -1,0 +1,112 @@
+---
+# Role: docker
+# Description: Installation et configuration de Docker et Docker Compose
+
+- name: "Supprimer les anciennes versions de Docker"
+  apt:
+    name:
+      - docker
+      - docker-engine
+      - docker.io
+      - containerd
+      - runc
+    state: absent
+  tags: ['docker', 'install']
+
+- name: "Ajouter la clé GPG Docker"
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  tags: ['docker', 'install']
+
+- name: "Ajouter le dépôt Docker"
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+  tags: ['docker', 'install']
+
+- name: "Installer Docker CE"
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+  tags: ['docker', 'install']
+
+- name: "Ajouter l'utilisateur au groupe docker"
+  user:
+    name: "{{ app_user }}"
+    groups: docker
+    append: yes
+  tags: ['docker', 'config']
+
+- name: "Créer le répertoire de configuration Docker"
+  file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+  tags: ['docker', 'config']
+
+- name: "Configurer le daemon Docker"
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+  notify: restart docker
+  tags: ['docker', 'config']
+
+- name: "Démarrer et activer Docker"
+  service:
+    name: docker
+    state: started
+    enabled: yes
+  tags: ['docker', 'service']
+
+- name: "Vérifier l'installation de Docker"
+  command: docker --version
+  register: docker_version_output
+  changed_when: false
+  tags: ['docker', 'verify']
+
+- name: "Afficher la version de Docker"
+  debug:
+    msg: "{{ docker_version_output.stdout }}"
+  tags: ['docker', 'verify']
+
+- name: "Vérifier l'installation de Docker Compose"
+  command: docker compose version
+  register: docker_compose_version_output
+  changed_when: false
+  tags: ['docker', 'verify']
+
+- name: "Afficher la version de Docker Compose"
+  debug:
+    msg: "{{ docker_compose_version_output.stdout }}"
+  tags: ['docker', 'verify']
+
+- name: "Créer les réseaux Docker"
+  docker_network:
+    name: "{{ item.name }}"
+    driver: bridge
+    ipam_config:
+      - subnet: "{{ item.subnet }}"
+    state: present
+  loop:
+    - name: frontend
+      subnet: "{{ docker_network_frontend_subnet }}"
+    - name: backend
+      subnet: "{{ docker_network_backend_subnet }}"
+  tags: ['docker', 'networks']
+
+- name: "Installer Docker Python library pour Ansible"
+  pip:
+    name:
+      - docker
+      - docker-compose
+    state: present
+  tags: ['docker', 'python']

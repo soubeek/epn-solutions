@@ -1,0 +1,224 @@
+# Variables globales pour le déploiement
+# Copier ce fichier vers all.yml et adapter à votre configuration
+
+---
+# ============================================
+# CONFIGURATION GÉNÉRALE
+# ============================================
+
+# Timezone
+timezone: "Indian/Reunion"
+
+# Locales
+locale: "fr_FR.UTF-8"
+language: "fr_FR:fr"
+
+# ============================================
+# CONFIGURATION RÉSEAU
+# ============================================
+
+# Interface réseau (carte unique du mini PC)
+network_interface: "eth0"  # Adapter selon votre système (eth0, enp3s0, etc.)
+
+# IP statique du serveur
+server_ip: "192.168.1.10"
+server_netmask: "255.255.255.0"
+server_cidr: "192.168.1.10/24"
+server_gateway: "192.168.1.1"
+server_broadcast: "192.168.1.255"
+
+# DNS
+server_dns_primary: "127.0.0.1"  # Pi-hole local
+server_dns_secondary: "192.168.1.1"  # DNS de la mairie (backup)
+
+# Réseau local
+network_subnet: "192.168.1.0/24"
+network_address: "192.168.1.0"
+
+# DHCP (serveur existant sur le réseau)
+dhcp_server_ip: "192.168.1.1"  # Serveur DHCP principal (routeur)
+dhcp_range_start: "192.168.1.100"
+dhcp_range_end: "192.168.1.120"
+
+# Domaine
+domain_name: "mairie.local"
+server_fqdn: "postes-publics.{{ domain_name }}"
+
+# ============================================
+# CONFIGURATION DOCKER
+# ============================================
+
+docker_version: "24.0"
+docker_compose_version: "2.23.0"
+
+# Docker networks
+docker_network_frontend_subnet: "172.19.0.0/16"
+docker_network_backend_subnet: "172.20.0.0/16"
+
+# ============================================
+# CONFIGURATION BASE DE DONNÉES
+# ============================================
+
+# PostgreSQL
+postgres_version: "15"
+postgres_user: "admin"
+postgres_password: "ChangeMeToSecurePassword123!"  # À CHANGER ABSOLUMENT !
+postgres_db: "poste_public"
+postgres_port: 5432
+
+# Redis
+redis_version: "7"
+redis_port: 6379
+
+# ============================================
+# CONFIGURATION DJANGO
+# ============================================
+
+# Django settings
+django_secret_key: "CHANGE-ME-TO-RANDOM-50-CHARS-STRING"  # Générer avec: openssl rand -hex 50
+django_debug: false
+django_allowed_hosts: "localhost,127.0.0.1,{{ server_ip }},{{ server_fqdn }}"
+django_settings_module: "config.settings.production"
+
+# Django admin superuser
+django_superuser_username: "admin"
+django_superuser_email: "admin@{{ domain_name }}"
+django_superuser_password: "AdminSecure123!"  # À CHANGER ABSOLUMENT !
+
+# Database URL
+database_url: "postgresql://{{ postgres_user }}:{{ postgres_password }}@postgres:{{ postgres_port }}/{{ postgres_db }}"
+redis_url: "redis://redis:{{ redis_port }}/0"
+
+# ============================================
+# CONFIGURATION PI-HOLE
+# ============================================
+
+pihole_version: "latest"
+pihole_web_password: "PiholeSecure123!"  # À CHANGER ABSOLUMENT !
+pihole_dns_1: "172.20.0.10#5053"  # Cloudflared (DoH)
+pihole_dns_2: "1.1.1.1"  # Cloudflare (backup)
+pihole_dnssec: true
+pihole_webui_port: 80
+
+# ============================================
+# CONFIGURATION DNSMASQ (PXE + PROXY-DHCP)
+# ============================================
+
+# Mode proxy-DHCP (ne distribue PAS d'IP)
+dnsmasq_dhcp_proxy: true
+dnsmasq_dhcp_range: "{{ network_address }},proxy"
+
+# TFTP
+tftp_root: "/srv/tftp"
+tftp_server_ip: "{{ server_ip }}"
+
+# Boot files
+pxe_boot_file_bios: "pxelinux.0"
+pxe_boot_file_uefi: "ipxe.efi"
+
+# ============================================
+# CONFIGURATION TRAEFIK
+# ============================================
+
+traefik_version: "2.10"
+traefik_dashboard: true
+traefik_acme_email: "admin@{{ domain_name }}"
+
+# Certificats SSL
+use_letsencrypt: false  # Mettre à true si vous avez un nom de domaine public
+use_selfsigned: true    # Certificats auto-signés pour réseau local
+
+# ============================================
+# CONFIGURATION CLIENT LIVE
+# ============================================
+
+# Debian Live
+debian_version: "bookworm"
+debian_mirror: "http://ftp.fr.debian.org/debian"
+
+# Environnement de bureau
+desktop_environment: "xfce"
+
+# Applications installées
+install_libreoffice: true
+install_firefox: true
+install_chromium: false
+install_vlc: true
+install_gimp: false
+
+# Client Python
+client_version: "1.0.0"
+client_log_file: "/var/log/session-client.log"
+
+# ============================================
+# CONFIGURATION BACKUP
+# ============================================
+
+backup_enabled: true
+backup_dir: "/var/backups/poste-public"
+backup_retention_days: 30
+
+# ============================================
+# CONFIGURATION MAIL (optionnel)
+# ============================================
+
+# Configuration SMTP pour notifications (optionnel)
+mail_enabled: false
+mail_host: "smtp.{{ domain_name }}"
+mail_port: 587
+mail_user: "noreply@{{ domain_name }}"
+mail_password: "MailPassword123!"
+mail_use_tls: true
+mail_from: "Postes Publics <noreply@{{ domain_name }}>"
+
+# ============================================
+# SÉCURITÉ
+# ============================================
+
+# Firewall
+firewall_enabled: true
+firewall_allow_ports:
+  - 22    # SSH
+  - 53    # DNS (Pi-hole)
+  - 69    # TFTP
+  - 80    # HTTP
+  - 443   # HTTPS
+  - 8080  # Nginx (Live image)
+
+# SSH
+ssh_port: 22
+ssh_password_auth: false  # Utiliser les clés SSH
+ssh_permit_root: true     # Nécessaire pour Ansible
+
+# Fail2ban
+fail2ban_enabled: true
+fail2ban_max_retry: 5
+fail2ban_bantime: 3600
+
+# ============================================
+# LOGS ET MONITORING
+# ============================================
+
+log_level: "INFO"
+log_retention_days: 90
+
+# Syslog
+syslog_server: false
+syslog_host: "192.168.1.5"
+syslog_port: 514
+
+# ============================================
+# VARIABLES AVANCÉES
+# ============================================
+
+# Chemin du projet
+project_name: "poste-public-manager"
+project_path: "/opt/{{ project_name }}"
+docker_compose_file: "{{ project_path }}/docker/docker-compose.yml"
+
+# Utilisateur système
+app_user: "poste-admin"
+app_group: "poste-admin"
+
+# Python version
+python_version: "3.11"

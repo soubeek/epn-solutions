@@ -1,0 +1,36 @@
+# Requirements de base pour Poste Public Manager Backend
+
+# Django
+Django==5.0.1
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+django-filter==23.5
+djangorestframework-simplejwt==5.3.1
+
+# Channels (WebSocket)
+channels==4.0.0
+channels-redis==4.1.0
+daphne==4.0.0
+
+# Cache & Broker
+django-redis==5.4.0
+redis==5.0.1
+
+# Celery (tâches asynchrones)
+celery==5.3.4
+django-celery-beat==2.7.0
+
+# Database
+psycopg[binary]>=3.1.0
+
+# Images
+Pillow>=10.4.0
+
+# Configuration
+python-decouple==3.8
+
+# Utilities
+pytz==2023.3
+
+# Security
+django-ratelimit==4.1.0

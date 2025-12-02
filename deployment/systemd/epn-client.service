@@ -1,0 +1,41 @@
+[Unit]
+Description=EPN Client - Gestion Poste Public
+Documentation=https://github.com/mairie-reunion/epn-client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=epn
+Group=epn
+WorkingDirectory=/opt/epn-client
+
+# Variables d'environnement
+Environment="RUST_LOG=info"
+Environment="EPN_CONFIG=/etc/epn-client/config.yaml"
+
+# Commande de démarrage
+ExecStart=/usr/local/bin/epn-client
+
+# Redémarrage automatique en cas d'erreur
+Restart=always
+RestartSec=10
+StartLimitInterval=0
+
+# Attendre que le réseau soit vraiment disponible
+ExecStartPre=/bin/sleep 5
+
+# Sécurité
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/epn-client
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=epn-client
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,68 @@
+# EPN Client - Rust Workspace
+# Client de gestion des postes publics pour la Mairie de La Réunion
+
+[workspace]
+members = [
+    "crates/epn-core",
+    "crates/epn-system",
+    "crates/epn-gui",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Mairie de La Réunion"]
+license = "MIT"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# WebSocket
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+mac_address = "1.1"
+local-ip-address = "0.5"
+url = "2.5"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Configuration
+serde_yaml = "0.9"
+
+# GUI (Tauri)
+tauri = "2.0"
+tauri-build = "2.0"
+
+# Linux-specific
+zbus = "4.0"
+notify-rust = "4.10"
+
+# Windows-specific
+windows = { version = "0.52", features = [
+    "Win32_System_Power",
+    "Win32_System_Shutdown",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+opt-level = "z"         # Optimize for size
+lto = true              # Link-time optimization
+codegen-units = 1       # Better optimization
+panic = "abort"         # Smaller binary
+strip = true            # Remove debug symbols

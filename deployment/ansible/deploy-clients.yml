@@ -1,0 +1,167 @@
+---
+# Playbook Ansible pour déploiement en masse du client EPN
+# Usage: ansible-playbook -i hosts.ini deploy-clients.yml
+
+- name: Déploiement Client EPN sur Postes Publics
+  hosts: postes_publics
+  become: yes
+  gather_facts: yes
+
+  vars:
+    server_ip: "192.168.1.10"
+    client_binary_path: "../../rust-client/target/release/epn-gui"
+    ssl_cert_path: "../ssl/poste-public.crt"
+
+  pre_tasks:
+    - name: Vérifier que le serveur est accessible
+      wait_for:
+        host: "{{ server_ip }}"
+        port: 443
+        timeout: 10
+      delegate_to: localhost
+      run_once: true
+
+    - name: Afficher informations du poste
+      debug:
+        msg: "Déploiement sur {{ inventory_hostname }} ({{ ansible_default_ipv4.address }})"
+
+  tasks:
+    # === Certificat SSL ===
+    - name: Copier le certificat SSL
+      copy:
+        src: "{{ ssl_cert_path }}"
+        dest: /usr/local/share/ca-certificates/poste-public.crt
+        mode: '0644'
+        owner: root
+        group: root
+      notify: Update CA certificates
+
+    - name: Mettre à jour les certificats CA
+      command: update-ca-certificates
+      changed_when: false
+
+    # === Binaire Client ===
+    - name: Copier le binaire client EPN
+      copy:
+        src: "{{ client_binary_path }}"
+        dest: /usr/local/bin/epn-client
+        mode: '0755'
+        owner: root
+        group: root
+
+    # === Configuration ===
+    - name: Créer répertoire de configuration
+      file:
+        path: /etc/epn-client
+        state: directory
+        mode: '0755'
+
+    - name: Créer répertoire de logs
+      file:
+        path: /var/log/epn-client
+        state: directory
+        mode: '0755'
+        owner: epn
+        group: epn
+
+    - name: Créer répertoire de travail
+      file:
+        path: /opt/epn-client
+        state: directory
+        mode: '0755'
+        owner: epn
+        group: epn
+
+    - name: Déployer la configuration client
+      template:
+        src: config.yaml.j2
+        dest: /etc/epn-client/config.yaml
+        mode: '0644'
+        owner: root
+        group: root
+      notify: Restart EPN client
+
+    # === Utilisateur Service ===
+    - name: Créer utilisateur service 'epn'
+      user:
+        name: epn
+        system: yes
+        shell: /bin/false
+        home: /opt/epn-client
+        comment: "EPN Client Service"
+        create_home: no
+
+    - name: Définir permissions sur les répertoires
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: epn
+        group: epn
+        recurse: yes
+      loop:
+        - /opt/epn-client
+        - /var/log/epn-client
+
+    # === Service Systemd ===
+    - name: Déployer le fichier service systemd
+      template:
+        src: epn-client.service.j2
+        dest: /etc/systemd/system/epn-client.service
+        mode: '0644'
+        owner: root
+        group: root
+      notify:
+        - Reload systemd
+        - Restart EPN client
+
+    - name: Activer le service EPN client
+      systemd:
+        name: epn-client
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Démarrer le service EPN client
+      systemd:
+        name: epn-client
+        state: started
+
+  # === Vérifications ===
+  post_tasks:
+    - name: Attendre que le service soit actif
+      wait_for:
+        timeout: 5
+
+    - name: Vérifier le status du service
+      command: systemctl is-active epn-client
+      register: service_status
+      changed_when: false
+      failed_when: false
+
+    - name: Afficher le status
+      debug:
+        msg: "Service EPN sur {{ inventory_hostname }}: {{ service_status.stdout }}"
+
+    - name: Récupérer les logs récents si erreur
+      command: journalctl -u epn-client -n 10 --no-pager
+      register: service_logs
+      when: service_status.stdout != "active"
+      changed_when: false
+
+    - name: Afficher les logs en cas d'erreur
+      debug:
+        msg: "{{ service_logs.stdout_lines }}"
+      when: service_status.stdout != "active"
+
+  # === Handlers ===
+  handlers:
+    - name: Update CA certificates
+      command: update-ca-certificates
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart EPN client
+      systemd:
+        name: epn-client
+        state: restarted

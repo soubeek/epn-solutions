@@ -1,0 +1,9 @@
+# Dépendances du client Poste Public
+
+websocket-client==1.7.0  # WebSocket client
+requests==2.31.0         # HTTP client
+python-dotenv==1.0.0     # Variables d'environnement
+
+# Windows uniquement (installées automatiquement par l'installeur Windows)
+# pywin32==306           # Service Windows, APIs Win32
+# win10toast==0.9        # Notifications toast Windows 10/11

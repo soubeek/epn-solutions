@@ -1,0 +1,375 @@
+version: '3.8'
+
+# Docker Compose pour Poste Public Manager
+# Architecture complète avec tous les services
+
+services:
+  # ==========================================
+  # BASE DE DONNÉES POSTGRESQL
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-postes
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-poste_public}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Erreur - POSTGRES_PASSWORD non défini}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      backend:
+        ipv4_address: 172.20.0.2
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # REDIS (CACHE + BROKER CELERY)
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis-postes
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      backend:
+        ipv4_address: 172.20.0.3
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # DJANGO BACKEND (API + WEBSOCKET)
+  # ==========================================
+  django:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: django-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-poste_public}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:?Erreur - SECRET_KEY non défini}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DEBUG=False
+      - TZ=Indian/Reunion
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost,https://localhost}
+    volumes:
+      - ../backend:/app
+      - django-static:/app/staticfiles
+      - django-media:/app/media
+    networks:
+      - backend
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.django.rule=Host(`${SERVER_FQDN:-localhost}`) && (PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/ws`))"
+      - "traefik.http.routers.django.entrypoints=websecure"
+      - "traefik.http.routers.django.tls=true"
+      - "traefik.http.services.django.loadbalancer.server.port=8000"
+    command: >
+      sh -c "
+        echo 'Attente de la base de données...' &&
+        python manage.py wait_for_db &&
+        echo 'Exécution des migrations...' &&
+        python manage.py migrate --noinput &&
+        echo 'Collecte des fichiers statiques...' &&
+        python manage.py collectstatic --noinput &&
+        echo 'Création du superuser (si nécessaire)...' &&
+        python manage.py shell -c \"from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.filter(username='${DJANGO_SUPERUSER_USERNAME:-admin}').exists() or User.objects.create_superuser('${DJANGO_SUPERUSER_USERNAME:-admin}', '${DJANGO_SUPERUSER_EMAIL:-admin@localhost}', '${DJANGO_SUPERUSER_PASSWORD:-admin}')\" || true &&
+        echo 'Démarrage de Daphne (ASGI)...' &&
+        daphne -b 0.0.0.0 -p 8000 config.asgi:application
+      "
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # CELERY WORKER (TÂCHES ASYNCHRONES)
+  # ==========================================
+  celery-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: celery-worker
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - django
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-poste_public}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - TZ=Indian/Reunion
+    volumes:
+      - ../backend:/app
+    networks:
+      - backend
+    command: celery -A config worker -l info --concurrency=4
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # CELERY BEAT (TÂCHES PLANIFIÉES)
+  # ==========================================
+  celery-beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: celery-beat
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - django
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-poste_public}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - TZ=Indian/Reunion
+    volumes:
+      - ../backend:/app
+      - celery-beat-data:/app/celerybeat-schedule
+    networks:
+      - backend
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # FRONTEND VUE.JS (NGINX)
+  # ==========================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://${SERVER_FQDN:-localhost}/api
+        - VITE_WS_URL=wss://${SERVER_FQDN:-localhost}/ws
+    container_name: frontend-admin
+    restart: unless-stopped
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${SERVER_FQDN:-localhost}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # NGINX (FICHIERS STATIQUES + IMAGE LIVE)
+  # ==========================================
+  nginx-static:
+    image: nginx:alpine
+    container_name: nginx-static
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/sites-enabled:/etc/nginx/sites-enabled:ro
+      - /srv/tftp:/usr/share/nginx/html/live:ro
+      - django-static:/usr/share/nginx/html/static:ro
+      - django-media:/usr/share/nginx/html/media:ro
+    networks:
+      - frontend
+    ports:
+      - "8080:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nginx-static.rule=Host(`${SERVER_FQDN:-localhost}`) && (PathPrefix(`/live`) || PathPrefix(`/static`) || PathPrefix(`/media`))"
+      - "traefik.http.routers.nginx-static.entrypoints=web"
+      - "traefik.http.services.nginx-static.loadbalancer.server.port=80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # PI-HOLE (DNS FILTRÉ)
+  # ==========================================
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    hostname: pihole
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    environment:
+      TZ: 'Indian/Reunion'
+      WEBPASSWORD: ${PIHOLE_PASSWORD:?Erreur - PIHOLE_PASSWORD non défini}
+      ServerIP: '${SERVER_IP:-192.168.1.10}'
+      PIHOLE_DNS_: '172.20.0.10#5053'
+      DNSSEC: 'true'
+      DNSMASQ_LISTENING: 'all'
+      DNS_BOGUS_PRIV: 'true'
+      DNS_FQDN_REQUIRED: 'false'
+      REV_SERVER: 'false'
+    volumes:
+      - pihole-data:/etc/pihole
+      - pihole-dnsmasq:/etc/dnsmasq.d
+      - ./pihole/custom.list:/etc/pihole/custom.list:ro
+    cap_add:
+      - NET_ADMIN
+    networks:
+      backend:
+        ipv4_address: 172.20.0.5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.${DOMAIN_NAME:-mairie.local}`)"
+      - "traefik.http.routers.pihole.entrypoints=websecure"
+      - "traefik.http.routers.pihole.tls=true"
+      - "traefik.http.services.pihole.loadbalancer.server.port=80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # CLOUDFLARED (DNS OVER HTTPS)
+  # ==========================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: proxy-dns
+    environment:
+      TUNNEL_DNS_UPSTREAM: 'https://1.1.1.1/dns-query,https://1.0.0.1/dns-query,https://9.9.9.9/dns-query'
+      TUNNEL_DNS_PORT: 5053
+      TUNNEL_DNS_ADDRESS: '0.0.0.0'
+    networks:
+      backend:
+        ipv4_address: 172.20.0.10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ==========================================
+  # TRAEFIK (REVERSE PROXY)
+  # ==========================================
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@localhost}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/acme.json:/acme.json
+      - traefik-logs:/var/log/traefik
+    networks:
+      - frontend
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN_NAME:-mairie.local}`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_AUTH:-admin:$$apr1$$8EVjn/nj$$GiLUZqcbueTFeD23SuB6x0}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ==========================================
+# NETWORKS
+# ==========================================
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+  backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ==========================================
+# VOLUMES
+# ==========================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  pihole-data:
+    driver: local
+  pihole-dnsmasq:
+    driver: local
+  django-static:
+    driver: local
+  django-media:
+    driver: local
+  celery-beat-data:
+    driver: local
+  traefik-logs:
+    driver: local

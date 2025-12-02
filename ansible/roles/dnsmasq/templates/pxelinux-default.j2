@@ -1,0 +1,48 @@
+# Configuration PXE Boot - Menu de démarrage
+# Généré automatiquement par Ansible
+
+DEFAULT vesamenu.c32
+TIMEOUT 300
+PROMPT 0
+
+MENU TITLE Menu de Boot - Postes Publics {{ domain_name }}
+MENU BACKGROUND
+MENU COLOR screen      37;40   #00000000 #00000000 std
+MENU COLOR border      30;44   #00000000 #00000000 std
+MENU COLOR title       1;36;44 #ff00ff00 #00000000 std
+MENU COLOR sel         7;37;40 #ffff0000 #ff000000 all
+MENU COLOR unsel       37;44   #ffffffff #00000000 std
+MENU COLOR help        37;40   #ff000000 #00000000 none
+MENU COLOR timeout_msg 37;40   #ff000000 #00000000 none
+MENU COLOR timeout     1;37;40 #ff000000 #00000000 none
+MENU COLOR msg07       37;40   #ff000000 #00000000 none
+MENU COLOR tabmsg      31;40   #ff000000 #00000000 none
+
+LABEL live-boot
+  MENU LABEL ^1. Demarrer Debian Live (Postes Publics)
+  MENU DEFAULT
+  KERNEL live/vmlinuz
+  APPEND initrd=live/initrd.img boot=live components quiet splash fetch=http://{{ server_ip }}:8080/live/filesystem.squashfs
+
+LABEL live-boot-persistent
+  MENU LABEL ^2. Demarrer avec session persistante (USB)
+  KERNEL live/vmlinuz
+  APPEND initrd=live/initrd.img boot=live components quiet splash persistent fetch=http://{{ server_ip }}:8080/live/filesystem.squashfs
+
+LABEL local-boot
+  MENU LABEL ^3. Demarrer depuis le disque local
+  LOCALBOOT 0
+
+LABEL memtest
+  MENU LABEL ^4. Test memoire (Memtest86+)
+  KERNEL live/memtest
+
+MENU SEPARATOR
+
+LABEL reboot
+  MENU LABEL ^R. Redemarrer
+  COM32 reboot.c32
+
+LABEL poweroff
+  MENU LABEL ^P. Eteindre
+  COM32 poweroff.c32

@@ -1,0 +1,10 @@
+server_url: http://localhost:8001
+ws_url: ws://localhost:8001
+check_interval: 5
+warning_time: 300
+critical_time: 60
+enable_screen_lock: false
+lock_on_expire: false
+logout_on_expire: false
+debug: true 
+log_level: debug 

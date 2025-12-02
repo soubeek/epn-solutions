@@ -1,0 +1,12 @@
+---
+# Handlers pour le role dnsmasq
+
+- name: restart dnsmasq
+  service:
+    name: dnsmasq
+    state: restarted
+
+- name: reload dnsmasq
+  service:
+    name: dnsmasq
+    state: reloaded

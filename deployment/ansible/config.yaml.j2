@@ -1,0 +1,23 @@
+# Configuration Client EPN - Poste Public
+# Généré automatiquement par Ansible pour {{ inventory_hostname }}
+
+# URLs du serveur (HTTPS/WSS)
+server_url: https://{{ server_ip }}
+ws_url: wss://{{ server_ip }}
+
+# Paramètres de session
+check_interval: 5
+warning_time: 300
+critical_time: 60
+
+# Actions à l'expiration
+enable_screen_lock: true
+lock_on_expire: true
+logout_on_expire: false
+
+# Logging
+debug: false
+log_level: info
+
+# SSL (certificat self-signed installé)
+skip_ssl_verification: false

@@ -1,0 +1,135 @@
+---
+# Role: dnsmasq
+# Description: Configuration de dnsmasq en mode proxy-DHCP + TFTP
+
+- name: "Installer dnsmasq"
+  apt:
+    name:
+      - dnsmasq
+      - pxelinux
+      - syslinux-common
+    state: present
+  tags: ['dnsmasq', 'install']
+
+- name: "Arrêter dnsmasq avant configuration"
+  service:
+    name: dnsmasq
+    state: stopped
+  tags: ['dnsmasq', 'config']
+
+- name: "Backup de la configuration dnsmasq existante"
+  command: mv /etc/dnsmasq.conf /etc/dnsmasq.conf.backup
+  args:
+    creates: /etc/dnsmasq.conf.backup
+  ignore_errors: yes
+  tags: ['dnsmasq', 'config']
+
+- name: "Créer le répertoire TFTP"
+  file:
+    path: "{{ tftp_root }}"
+    state: directory
+    mode: '0755'
+    owner: dnsmasq
+    group: nogroup
+  tags: ['dnsmasq', 'tftp']
+
+- name: "Créer les sous-répertoires TFTP"
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: dnsmasq
+    group: nogroup
+  loop:
+    - "{{ tftp_root }}/pxelinux.cfg"
+    - "{{ tftp_root }}/live"
+  tags: ['dnsmasq', 'tftp']
+
+- name: "Copier les fichiers PXE nécessaires"
+  copy:
+    src: "/usr/lib/{{ item }}"
+    dest: "{{ tftp_root }}/{{ item | basename }}"
+    remote_src: yes
+    mode: '0644'
+  loop:
+    - PXELINUX/pxelinux.0
+    - syslinux/modules/bios/ldlinux.c32
+    - syslinux/modules/bios/libcom32.c32
+    - syslinux/modules/bios/libutil.c32
+    - syslinux/modules/bios/vesamenu.c32
+  ignore_errors: yes
+  tags: ['dnsmasq', 'tftp', 'pxe']
+
+- name: "Configurer le fichier de boot PXE par défaut"
+  template:
+    src: pxelinux-default.j2
+    dest: "{{ tftp_root }}/pxelinux.cfg/default"
+    mode: '0644'
+  tags: ['dnsmasq', 'tftp', 'pxe']
+
+- name: "Créer la configuration dnsmasq principale"
+  template:
+    src: dnsmasq.conf.j2
+    dest: /etc/dnsmasq.conf
+    mode: '0644'
+  notify: restart dnsmasq
+  tags: ['dnsmasq', 'config']
+
+- name: "Créer la configuration PXE de dnsmasq"
+  template:
+    src: dnsmasq-pxe.conf.j2
+    dest: /etc/dnsmasq.d/pxe.conf
+    mode: '0644'
+  notify: restart dnsmasq
+  tags: ['dnsmasq', 'config', 'pxe']
+
+- name: "Désactiver le DNS de dnsmasq (Pi-hole le gère)"
+  lineinfile:
+    path: /etc/dnsmasq.conf
+    line: 'port=0'
+    state: present
+  notify: restart dnsmasq
+  tags: ['dnsmasq', 'config']
+
+- name: "Configurer les permissions TFTP"
+  file:
+    path: "{{ tftp_root }}"
+    state: directory
+    mode: '0755'
+    owner: dnsmasq
+    group: nogroup
+    recurse: yes
+  tags: ['dnsmasq', 'tftp']
+
+- name: "Activer et démarrer dnsmasq"
+  service:
+    name: dnsmasq
+    state: started
+    enabled: yes
+  tags: ['dnsmasq', 'service']
+
+- name: "Vérifier le statut de dnsmasq"
+  command: systemctl status dnsmasq
+  register: dnsmasq_status
+  changed_when: false
+  ignore_errors: yes
+  tags: ['dnsmasq', 'verify']
+
+- name: "Afficher le statut de dnsmasq"
+  debug:
+    msg: "{{ dnsmasq_status.stdout_lines }}"
+  tags: ['dnsmasq', 'verify']
+
+- name: "Tester le serveur TFTP"
+  command: "tftp {{ server_ip }} -c get pxelinux.0"
+  args:
+    chdir: /tmp
+  register: tftp_test
+  changed_when: false
+  ignore_errors: yes
+  tags: ['dnsmasq', 'verify', 'tftp']
+
+- name: "Afficher le résultat du test TFTP"
+  debug:
+    msg: "Test TFTP : {{ 'OK' if tftp_test.rc == 0 else 'ÉCHEC' }}"
+  tags: ['dnsmasq', 'verify', 'tftp']

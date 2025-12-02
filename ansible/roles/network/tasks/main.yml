@@ -1,0 +1,104 @@
+---
+# Role: network
+# Description: Configuration réseau (IP statique avec netplan)
+
+- name: "Installer les paquets réseau nécessaires"
+  apt:
+    name:
+      - netplan.io
+      - network-manager
+      - dnsmasq-base
+    state: present
+  tags: ['network', 'packages']
+
+- name: "Détecter l'interface réseau principale"
+  shell: ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -1
+  register: detected_interface
+  changed_when: false
+  tags: ['network', 'detect']
+
+- name: "Afficher l'interface détectée"
+  debug:
+    msg: "Interface réseau détectée : {{ detected_interface.stdout }}"
+  tags: ['network', 'detect']
+
+- name: "Définir l'interface réseau à utiliser"
+  set_fact:
+    active_network_interface: "{{ network_interface | default(detected_interface.stdout) }}"
+  tags: ['network', 'detect']
+
+- name: "Backup de la configuration netplan existante"
+  shell: |
+    if [ -f /etc/netplan/*.yaml ]; then
+      cp /etc/netplan/*.yaml /etc/netplan/backup-$(date +%Y%m%d-%H%M%S).yaml || true
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: ['network', 'backup']
+
+- name: "Supprimer les anciennes configurations netplan"
+  shell: rm -f /etc/netplan/*.yaml
+  args:
+    executable: /bin/bash
+  tags: ['network', 'config']
+
+- name: "Créer la configuration netplan avec IP statique"
+  template:
+    src: netplan.yaml.j2
+    dest: /etc/netplan/01-netcfg.yaml
+    mode: '0600'
+  notify: apply netplan
+  tags: ['network', 'config']
+
+- name: "Désactiver cloud-init network config (si présent)"
+  file:
+    path: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    state: touch
+    mode: '0644'
+  when: ansible_facts['distribution'] == 'Ubuntu'
+  tags: ['network', 'cloud-init']
+
+- name: "Configurer cloud-init pour ne pas gérer le réseau"
+  copy:
+    dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    content: |
+      network: {config: disabled}
+  when: ansible_facts['distribution'] == 'Ubuntu'
+  tags: ['network', 'cloud-init']
+
+- name: "Configurer /etc/hosts"
+  template:
+    src: hosts.j2
+    dest: /etc/hosts
+    mode: '0644'
+  tags: ['network', 'hosts']
+
+- name: "Configurer resolv.conf pour utiliser Pi-hole local"
+  copy:
+    dest: /etc/resolv.conf
+    content: |
+      # Configuration DNS pour Poste Public Manager
+      # Géré par Ansible - Ne pas modifier manuellement
+      nameserver {{ server_dns_primary }}
+      nameserver {{ server_dns_secondary }}
+      search {{ domain_name }}
+    mode: '0644'
+  tags: ['network', 'dns']
+
+- name: "Protéger resolv.conf contre les modifications"
+  file:
+    path: /etc/resolv.conf
+    attributes: +i
+  tags: ['network', 'dns']
+
+- name: "Vérifier la configuration réseau"
+  command: netplan get
+  register: netplan_config
+  changed_when: false
+  tags: ['network', 'verify']
+
+- name: "Afficher la configuration netplan"
+  debug:
+    msg: "{{ netplan_config.stdout }}"
+  tags: ['network', 'verify']

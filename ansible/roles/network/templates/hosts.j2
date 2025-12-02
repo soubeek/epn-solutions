@@ -1,0 +1,16 @@
+# /etc/hosts - Généré automatiquement par Ansible
+
+127.0.0.1       localhost
+127.0.1.1       {{ server_hostname }}
+
+# Serveur principal
+{{ server_ip }}     {{ server_fqdn }} {{ server_hostname }}
+
+# Services locaux
+127.0.0.1       pihole.{{ domain_name }}
+127.0.0.1       traefik.{{ domain_name }}
+
+# IPv6
+::1             localhost ip6-localhost ip6-loopback
+ff02::1         ip6-allnodes
+ff02::2         ip6-allrouters

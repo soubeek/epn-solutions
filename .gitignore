@@ -1,0 +1,133 @@
+# Projet Poste Public Manager - .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media
+/staticfiles
+/static
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Frontend
+node_modules/
+/dist
+/dist-ssr
+*.local
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Environment variables
+.env
+.env.local
+.env.production
+*.env
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Ansible
+*.retry
+ansible/inventory/hosts.yml
+
+# Live Image Build
+live-image/cache/
+live-image/chroot/
+live-image/chroot.files/
+live-image/chroot.packages.install/
+live-image/binary/
+live-image/binary.contents/
+live-image/binary.packages/
+live-image/*.iso
+live-image/*.img
+live-image/*.hybrid.iso
+live-image/.build/
+
+# Logs
+*.log
+logs/
+/var/log/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# SSL/TLS
+*.pem
+*.key
+*.crt
+*.csr
+acme.json
+
+# Database dumps
+*.sql
+*.dump
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Documentation build
+_build/
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+!rust-client/Cargo.lock

@@ -1,0 +1,26 @@
+[package]
+name = "epn-system"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Async runtime (for process spawning)
+tokio = { workspace = true }
+
+# Linux-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { workspace = true }
+notify-rust = { workspace = true }
+
+# Windows-specific dependencies
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true }

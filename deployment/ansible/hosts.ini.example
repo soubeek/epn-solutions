@@ -1,0 +1,55 @@
+# Inventaire Ansible - Postes Publics
+# Copier ce fichier en hosts.ini et adapter les adresses IP
+
+[postes_publics]
+# Format: nom_hôte ansible_host=IP_ADDRESS
+
+# Bibliothèque Municipale
+poste-biblio-01 ansible_host=192.168.1.101
+poste-biblio-02 ansible_host=192.168.1.102
+poste-biblio-03 ansible_host=192.168.1.103
+
+# Mairie
+poste-mairie-01 ansible_host=192.168.1.111
+poste-mairie-02 ansible_host=192.168.1.112
+
+# Annexe Saint-Denis
+poste-annexe-01 ansible_host=192.168.1.121
+poste-annexe-02 ansible_host=192.168.1.122
+
+[postes_publics:vars]
+# Variables communes à tous les postes
+ansible_user=admin
+ansible_become=yes
+ansible_become_method=sudo
+ansible_python_interpreter=/usr/bin/python3
+
+# IP du serveur
+server_ip=192.168.1.10
+
+# Groupes optionnels pour déploiement progressif
+[bibliotheque]
+poste-biblio-[01:03] ansible_host=192.168.1.10[1:3]
+
+[mairie]
+poste-mairie-[01:02] ansible_host=192.168.1.11[1:2]
+
+[annexe]
+poste-annexe-[01:02] ansible_host=192.168.1.12[1:2]
+
+# Groupes par phase de déploiement
+[pilot]
+# 2-3 postes pour test initial
+poste-biblio-01 ansible_host=192.168.1.101
+poste-mairie-01 ansible_host=192.168.1.111
+
+[phase1]
+# 30% des postes
+poste-biblio-[01:02] ansible_host=192.168.1.10[1:2]
+poste-mairie-01 ansible_host=192.168.1.111
+
+[phase2]
+# 70% restants
+poste-biblio-03 ansible_host=192.168.1.103
+poste-mairie-02 ansible_host=192.168.1.112
+poste-annexe-[01:02] ansible_host=192.168.1.12[1:2]

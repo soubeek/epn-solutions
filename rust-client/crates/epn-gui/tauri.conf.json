@@ -1,0 +1,26 @@
+{
+  "productName": "EPN Client",
+  "version": "0.1.0",
+  "identifier": "re.mairie.epn-client",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "bundle": {
+    "active": false
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "EPN Client - Poste Public",
+        "width": 800,
+        "height": 600,
+        "resizable": true,
+        "center": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

@@ -1,0 +1,48 @@
+# Inventaire Ansible pour Poste Public Manager
+# Copier ce fichier vers hosts.yml et adapter à votre configuration
+
+all:
+  children:
+    # Serveur principal (mini PC)
+    poste_server:
+      hosts:
+        serveur-postes:
+          ansible_host: 192.168.1.10
+          ansible_user: root
+          ansible_python_interpreter: /usr/bin/python3
+
+          # Variables spécifiques à ce serveur
+          server_hostname: serveur-postes-publics
+          server_timezone: Indian/Reunion
+
+    # Postes clients (optionnel - si vous voulez gérer des clients Windows)
+    poste_clients:
+      hosts:
+        # Exemple de client Windows
+        # poste-01:
+        #   ansible_host: 192.168.1.100
+        #   ansible_user: Administrateur
+        #   ansible_connection: winrm
+        #   ansible_winrm_server_cert_validation: ignore
+
+  vars:
+    # Variables communes à tous les hôtes
+    ansible_port: 22
+
+    # Configuration réseau
+    network_interface: eth0  # ou enp3s0 selon votre interface
+    server_ip: 192.168.1.10
+    server_netmask: 255.255.255.0
+    server_gateway: 192.168.1.1
+    server_dns1: 127.0.0.1  # Pi-hole local
+    server_dns2: 192.168.1.1  # DNS de secours
+
+    # Réseau DHCP existant
+    dhcp_network: 192.168.1.0
+    dhcp_netmask: 255.255.255.0
+    dhcp_range_start: 192.168.1.100
+    dhcp_range_end: 192.168.1.120
+
+    # Domaine
+    domain_name: mairie.local
+    server_fqdn: postes-publics.mairie.local

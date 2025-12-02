@@ -1,0 +1,33 @@
+# Fichier de configuration exemple pour le client EPN
+# Copier ce fichier en epn-config.yaml et ajuster les valeurs
+
+# URL du serveur API Django
+server_url: http://localhost:8001
+
+# URL WebSocket (auto-généré si non spécifié)
+# Remplacer http par ws dans l'URL du serveur
+ws_url: ws://localhost:8001
+
+# Intervalle de vérification en secondes
+check_interval: 5
+
+# Temps d'avertissement en secondes (5 minutes par défaut)
+warning_time: 300
+
+# Temps critique en secondes (1 minute par défaut)
+critical_time: 60
+
+# Activer le verrouillage d'écran
+enable_screen_lock: true
+
+# Verrouiller l'écran à l'expiration de la session
+lock_on_expire: true
+
+# Déconnecter l'utilisateur à l'expiration (attention : ferme la session)
+logout_on_expire: false
+
+# Mode debug (affiche plus de logs)
+debug: false
+
+# Niveau de log : trace, debug, info, warn, error
+log_level: info

@@ -1,0 +1,133 @@
+# Configuration dnsmasq pour Poste Public Manager
+# Mode: Proxy-DHCP + TFTP uniquement (pas de distribution d'IP)
+# Généré automatiquement par Ansible
+
+# ============================================
+# INTERFACE ET ÉCOUTE
+# ============================================
+
+# Interface à écouter
+interface={{ active_network_interface }}
+bind-interfaces
+
+# Ne pas lire /etc/resolv.conf
+no-resolv
+
+# Ne pas lire /etc/hosts
+no-hosts
+
+# ============================================
+# DNS DÉSACTIVÉ (Pi-hole le gère)
+# ============================================
+
+# Port 0 = DNS désactivé
+port=0
+
+# ============================================
+# DHCP PROXY MODE
+# ============================================
+
+# Mode proxy-DHCP : ne distribue PAS d'IP
+# Répond seulement aux requêtes PXE boot
+dhcp-range={{ network_address }},proxy
+
+# Ne pas devenir DHCP autoritaire
+dhcp-authoritative
+
+# ============================================
+# TFTP
+# ============================================
+
+# Activer le serveur TFTP
+enable-tftp
+
+# Racine TFTP
+tftp-root={{ tftp_root }}
+
+# Sécuriser TFTP (pas d'accès en dehors du tftp-root)
+tftp-secure
+
+# Taille max des transferts TFTP (en octets)
+tftp-max=52428800
+
+# Ne pas utiliser les ports éphémères
+tftp-no-blocksize
+
+# ============================================
+# BOOT PXE - BIOS Legacy
+# ============================================
+
+# Fichier de boot pour clients BIOS
+dhcp-boot={{ pxe_boot_file_bios }},pxeserver,{{ tftp_server_ip }}
+
+# ============================================
+# BOOT PXE - UEFI (optionnel)
+# ============================================
+
+# Détecter les clients UEFI
+dhcp-match=set:efi-x86_64,option:client-arch,7
+dhcp-match=set:efi-x86_64,option:client-arch,9
+
+# Fichier de boot pour clients UEFI
+dhcp-boot=tag:efi-x86_64,{{ pxe_boot_file_uefi }},pxeserver,{{ tftp_server_ip }}
+
+# ============================================
+# OPTIONS PXE
+# ============================================
+
+# Service PXE pour BIOS
+pxe-service=x86PC,"Boot depuis le reseau",{{ pxe_boot_file_bios }}
+
+# Service PXE pour UEFI
+pxe-service=BC_EFI,"Boot depuis le reseau",{{ pxe_boot_file_uefi }}
+
+# ============================================
+# LOGS
+# ============================================
+
+# Activer les logs DHCP (pour debug)
+log-dhcp
+
+# Activer les logs TFTP (pour debug)
+# log-tftp
+
+# Fichier de log
+log-facility=/var/log/dnsmasq.log
+
+# Log queries (debug)
+# log-queries
+
+# ============================================
+# SÉCURITÉ
+# ============================================
+
+# Interdire les rebinds DNS (protection contre DNS rebinding)
+stop-dns-rebind
+
+# Domaine local
+domain={{ domain_name }}
+local=/{{ domain_name }}/
+
+# Ne pas transférer les noms courts
+domain-needed
+
+# Ne pas transférer les requêtes pour les adresses privées
+bogus-priv
+
+# ============================================
+# RÉSERVATIONS DHCP (optionnel)
+# ============================================
+
+# Exemple de réservation MAC -> IP (si DHCP principal le permet)
+{% if dhcp_reservations is defined %}
+{% for reservation in dhcp_reservations %}
+# dhcp-host={{ reservation.mac }},{{ reservation.ip }},{{ reservation.name }}
+{% endfor %}
+{% endif %}
+
+# ============================================
+# CONFIGURATION SUPPLÉMENTAIRE
+# ============================================
+
+# Lire les configurations supplémentaires
+conf-dir=/etc/dnsmasq.d/,*.conf

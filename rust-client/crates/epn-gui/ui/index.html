@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPN Client - Poste Public</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- État de connexion -->
+    <div id="connection-status" class="status-bar">
+        <span id="connection-text">⚠️ Non connecté</span>
+    </div>
+
+    <!-- Écran de connexion -->
+    <div id="login-screen" class="screen active">
+        <div class="container">
+            <div class="header">
+                <h1>🏛️ Poste Public</h1>
+                <p class="subtitle">Mairie de La Réunion</p>
+            </div>
+
+            <div class="card">
+                <h2>Code d'Accès</h2>
+                <p class="instruction">Entrez votre code d'accès pour démarrer une session</p>
+
+                <div class="form-group">
+                    <input
+                        type="text"
+                        id="code-input"
+                        class="code-input"
+                        placeholder="ABC123"
+                        autocomplete="off"
+                        autofocus
+                    >
+                </div>
+
+                <button id="validate-btn" class="btn btn-primary" onclick="validateCode()">
+                    Valider
+                </button>
+
+                <div id="login-error" class="error-message" style="display: none;"></div>
+            </div>
+
+            <div class="footer">
+                <p id="server-info" class="info-text"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Écran de session active -->
+    <div id="session-screen" class="screen">
+        <div class="container">
+            <div class="header">
+                <h2>Session Active</h2>
+                <p id="user-name" class="user-name"></p>
+            </div>
+
+            <div class="card card-centered">
+                <!-- Compteur principal -->
+                <div id="countdown-display" class="countdown">
+                    <div class="countdown-time">
+                        <span id="minutes">00</span>:<span id="seconds">00</span>
+                    </div>
+                    <div class="countdown-label">Temps restant</div>
+                </div>
+
+                <!-- Barre de progression -->
+                <div class="progress-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+
+                <!-- Informations -->
+                <div class="session-info">
+                    <div class="info-item">
+                        <span class="info-label">Poste :</span>
+                        <span id="workstation" class="info-value"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Durée totale :</span>
+                        <span id="total-duration" class="info-value"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Avertissement -->
+            <div id="warning-message" class="warning-box" style="display: none;">
+                <div class="warning-icon">⚠️</div>
+                <div id="warning-text" class="warning-text"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Écran de session expirée -->
+    <div id="expired-screen" class="screen">
+        <div class="container">
+            <div class="card card-centered">
+                <div class="expired-icon">⏰</div>
+                <h2>Session Expirée</h2>
+                <p class="expired-message">
+                    Votre temps est écoulé. Merci d'avoir utilisé ce poste public.
+                </p>
+                <button class="btn btn-primary" onclick="returnToLogin()">
+                    Nouvelle Session
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

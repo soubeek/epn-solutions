@@ -1,0 +1,95 @@
+# Routage Traefik pour EPN Solutions
+# Configuration des routes vers les services
+
+http:
+  routers:
+    # Dashboard Traefik (protégé)
+    traefik-dashboard:
+      rule: "Host(`traefik.{{ env \"SERVER_FQDN\" | default \"localhost\" }}`)"
+      service: api@internal
+      entryPoints:
+        - websecure
+      tls: {}
+      middlewares:
+        - secure-headers
+
+    # Frontend Vue.js
+    frontend:
+      rule: "Host(`{{ env \"SERVER_FQDN\" | default \"localhost\" }}`)"
+      service: frontend
+      entryPoints:
+        - websecure
+      tls: {}
+      middlewares:
+        - secure-headers
+        - gzip-compress
+      priority: 1
+
+    # API Django REST
+    api:
+      rule: "Host(`{{ env \"SERVER_FQDN\" | default \"localhost\" }}`) && PathPrefix(`/api`)"
+      service: django
+      entryPoints:
+        - websecure
+      tls: {}
+      middlewares:
+        - secure-headers
+        - rate-limit
+      priority: 10
+
+    # WebSocket Django Channels
+    websocket:
+      rule: "Host(`{{ env \"SERVER_FQDN\" | default \"localhost\" }}`) && PathPrefix(`/ws`)"
+      service: django
+      entryPoints:
+        - websecure
+      tls: {}
+      priority: 10
+
+    # Admin Django
+    admin:
+      rule: "Host(`{{ env \"SERVER_FQDN\" | default \"localhost\" }}`) && PathPrefix(`/admin`)"
+      service: django
+      entryPoints:
+        - websecure
+      tls: {}
+      middlewares:
+        - secure-headers
+        - auth-rate-limit
+      priority: 10
+
+    # Fichiers statiques Django
+    static:
+      rule: "Host(`{{ env \"SERVER_FQDN\" | default \"localhost\" }}`) && PathPrefix(`/static`)"
+      service: nginx-static
+      entryPoints:
+        - websecure
+      tls: {}
+      middlewares:
+        - gzip-compress
+      priority: 10
+
+    # Fichiers media Django
+    media:
+      rule: "Host(`{{ env \"SERVER_FQDN\" | default \"localhost\" }}`) && PathPrefix(`/media`)"
+      service: nginx-static
+      entryPoints:
+        - websecure
+      tls: {}
+      priority: 10
+
+  services:
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:80"
+
+    django:
+      loadBalancer:
+        servers:
+          - url: "http://django:8000"
+
+    nginx-static:
+      loadBalancer:
+        servers:
+          - url: "http://nginx-static:80"

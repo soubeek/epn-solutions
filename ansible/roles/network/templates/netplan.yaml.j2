@@ -1,0 +1,21 @@
+# Configuration Netplan pour Poste Public Manager
+# Généré automatiquement par Ansible - Ne pas modifier manuellement
+
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ active_network_interface }}:
+      dhcp4: no
+      dhcp6: no
+      addresses:
+        - {{ server_cidr }}
+      routes:
+        - to: default
+          via: {{ server_gateway }}
+      nameservers:
+        addresses:
+          - {{ server_dns_primary }}
+          - {{ server_dns_secondary }}
+        search:
+          - {{ domain_name }}

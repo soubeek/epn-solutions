@@ -1,0 +1,3 @@
+# Ce répertoire contient les certificats SSL
+# Les fichiers de certificats ne doivent pas être commités
+# Générez-les avec: ../scripts/generate-certificates.sh

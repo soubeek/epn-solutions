@@ -1,0 +1,26 @@
+# Fichiers d'environnement
+.env
+.env.local
+.env.production
+
+# Certificats SSL (générés localement)
+certs/*.key
+certs/*.crt
+certs/*.pem
+certs/*.csr
+certs/*.srl
+
+# Ne pas ignorer le .gitkeep
+!certs/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Volumes Docker locaux
+volumes/
+
+# Fichiers temporaires
+*.tmp
+*.bak
+*~

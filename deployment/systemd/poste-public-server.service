@@ -1,0 +1,47 @@
+[Unit]
+Description=Poste Public - Serveur Django + Daphne
+Documentation=https://docs.djangoproject.com/
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/poste-public/backend
+
+# Variables d'environnement
+Environment="DJANGO_ENV=production"
+Environment="PATH=/opt/poste-public/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Commande de démarrage (Daphne écoute sur localhost:8001)
+ExecStart=/opt/poste-public/venv/bin/daphne \
+    -b 127.0.0.1 \
+    -p 8001 \
+    --proxy-headers \
+    config.asgi:application
+
+# Redémarrage automatique
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+# Sécurité
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/poste-public/backend/media /opt/poste-public/backend/logs
+
+# Limites de ressources
+LimitNOFILE=65536
+TasksMax=512
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=poste-public
+
+[Install]
+WantedBy=multi-user.target

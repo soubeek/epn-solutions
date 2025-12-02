@@ -1,0 +1,48 @@
+# Middlewares Traefik pour EPN Solutions
+
+http:
+  middlewares:
+    # Headers de sécurité
+    secure-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        customFrameOptionsValue: "SAMEORIGIN"
+        referrerPolicy: "strict-origin-when-cross-origin"
+
+    # Rate limiting global
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1s
+
+    # Rate limiting pour l'authentification
+    auth-rate-limit:
+      rateLimit:
+        average: 10
+        burst: 5
+        period: 1m
+
+    # Compression gzip
+    gzip-compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+
+    # Retry en cas d'erreur backend
+    retry:
+      retry:
+        attempts: 3
+        initialInterval: 100ms
+
+    # Strip prefix pour l'API
+    api-strip:
+      stripPrefix:
+        prefixes:
+          - "/api"
+        forceSlash: false

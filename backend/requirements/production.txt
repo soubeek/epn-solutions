@@ -1,0 +1,9 @@
+# Requirements production
+
+-r base.txt
+
+# WSGI server
+gunicorn==21.2.0
+
+# Monitoring (optionnel)
+# sentry-sdk==1.39.1
