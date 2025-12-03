@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Docker Compose pour Poste Public Manager
 # Architecture complète avec tous les services
 
@@ -20,8 +18,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
-      backend:
-        ipv4_address: 172.20.0.2
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
       interval: 10s
@@ -44,8 +41,7 @@ services:
     volumes:
       - redis-data:/data
     networks:
-      backend:
-        ipv4_address: 172.20.0.3
+      - backend
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -214,12 +210,14 @@ services:
       - django-media:/usr/share/nginx/html/media:ro
     networks:
       - frontend
-    ports:
-      - "8080:80"
+    # Port 8080 retiré car géré par Traefik
+    # ports:
+    #   - "8080:80"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nginx-static.rule=Host(`${SERVER_FQDN:-localhost}`) && (PathPrefix(`/live`) || PathPrefix(`/static`) || PathPrefix(`/media`))"
-      - "traefik.http.routers.nginx-static.entrypoints=web"
+      - "traefik.http.routers.nginx-static.entrypoints=websecure"
+      - "traefik.http.routers.nginx-static.tls=true"
       - "traefik.http.services.nginx-static.loadbalancer.server.port=80"
     logging:
       driver: "json-file"
@@ -255,8 +253,7 @@ services:
     cap_add:
       - NET_ADMIN
     networks:
-      backend:
-        ipv4_address: 172.20.0.5
+      - backend
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.pihole.rule=Host(`pihole.${DOMAIN_NAME:-mairie.local}`)"
@@ -282,8 +279,7 @@ services:
       TUNNEL_DNS_PORT: 5053
       TUNNEL_DNS_ADDRESS: '0.0.0.0'
     networks:
-      backend:
-        ipv4_address: 172.20.0.10
+      - backend
     logging:
       driver: "json-file"
       options:

@@ -1,0 +1,12 @@
+# Pi-hole Custom DNS Records
+# Format: IP_ADDRESS HOSTNAME
+# Ces entrées permettent la résolution DNS locale
+
+# Serveur EPN Solutions
+192.168.1.10 postes.mairie.local
+192.168.1.10 traefik.mairie.local
+192.168.1.10 pihole.mairie.local
+
+# Alias
+192.168.1.10 epn.local
+192.168.1.10 admin.epn.local
