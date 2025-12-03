@@ -131,7 +131,14 @@ services:
       - ../backend:/app
     networks:
       - backend
-    command: celery -A config worker -l info --concurrency=4
+    command: >
+      sh -c "
+        echo 'Attente de Django et des migrations...' &&
+        python manage.py wait_for_db &&
+        sleep 10 &&
+        echo 'Démarrage du worker Celery...' &&
+        celery -A config worker -l info --concurrency=4
+      "
     logging:
       driver: "json-file"
       options:
@@ -162,7 +169,14 @@ services:
       - celery-beat-data:/app/celerybeat-schedule
     networks:
       - backend
-    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: >
+      sh -c "
+        echo 'Attente de Django et des migrations...' &&
+        python manage.py wait_for_db &&
+        sleep 15 &&
+        echo 'Démarrage de Celery Beat...' &&
+        celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      "
     logging:
       driver: "json-file"
       options:
