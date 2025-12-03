@@ -95,8 +95,10 @@ live-image/.build/
 
 # Logs
 *.log
-logs/
+/logs/
 /var/log/
+# Ne pas ignorer l'app Django logs
+!backend/apps/logs/
 
 # OS
 .DS_Store
