@@ -6,10 +6,12 @@ WORKDIR /app
 # Arguments de build pour les URLs de l'API
 ARG VITE_API_URL=http://localhost:8000/api
 ARG VITE_WS_URL=ws://localhost:8000/ws
+ARG VITE_APP_TITLE="EPN - Gestion des Postes Publics"
 
 # Variables d'environnement pour le build
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_WS_URL=${VITE_WS_URL}
+ENV VITE_APP_TITLE=${VITE_APP_TITLE}
 
 # Copier les fichiers de dépendances
 COPY package.json package-lock.json ./

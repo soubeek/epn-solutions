@@ -340,14 +340,8 @@ services:
 networks:
   frontend:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.19.0.0/16
   backend:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
 
 # ==========================================
 # VOLUMES
