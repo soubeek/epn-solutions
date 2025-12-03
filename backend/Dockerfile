@@ -20,9 +20,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copier et installer les requirements Python
-COPY requirements/production.txt requirements.txt
+COPY requirements/ requirements/
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+    pip install -r requirements/production.txt
 
 # Copier le code du projet
 COPY . .
