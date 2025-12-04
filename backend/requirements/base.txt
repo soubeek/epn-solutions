@@ -34,3 +34,6 @@ pytz==2023.3
 
 # Security
 django-ratelimit==4.1.0
+
+# Cryptography (mTLS client certificates)
+cryptography>=41.0.0

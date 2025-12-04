@@ -85,6 +85,51 @@ class Poste(TimeStampedModel):
         verbose_name="Nombre de sessions total"
     )
 
+    # Certificat client (mTLS)
+    certificate_cn = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        verbose_name="CN du certificat",
+        help_text="Common Name du certificat (auto-généré)"
+    )
+    certificate_fingerprint = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="Empreinte certificat",
+        help_text="SHA256 fingerprint du certificat"
+    )
+    certificate_issued_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Certificat délivré le"
+    )
+    certificate_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Certificat expire le"
+    )
+    is_certificate_revoked = models.BooleanField(
+        default=False,
+        verbose_name="Certificat révoqué"
+    )
+
+    # Token d'enregistrement (temporaire, usage unique)
+    registration_token = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="Token d'enregistrement",
+        help_text="Token temporaire pour l'enregistrement du client"
+    )
+    registration_token_expires = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Expiration du token"
+    )
+
     class Meta:
         db_table = 'postes'
         ordering = ['nom']
@@ -141,3 +186,33 @@ class Poste(TimeStampedModel):
         if version_client:
             self.version_client = version_client
         self.save(update_fields=['derniere_connexion', 'version_client'])
+
+    # Méthodes certificat
+    @property
+    def is_registered(self):
+        """Vérifie si le poste a un certificat valide"""
+        return (
+            self.certificate_cn is not None
+            and not self.is_certificate_revoked
+            and (self.certificate_expires_at is None or self.certificate_expires_at > timezone.now())
+        )
+
+    @property
+    def has_pending_registration(self):
+        """Vérifie si un token d'enregistrement est en attente"""
+        return (
+            self.registration_token is not None
+            and self.registration_token_expires is not None
+            and self.registration_token_expires > timezone.now()
+        )
+
+    def revoke_certificate(self):
+        """Révoque le certificat du poste"""
+        self.is_certificate_revoked = True
+        self.save(update_fields=['is_certificate_revoked'])
+
+    def clear_registration_token(self):
+        """Supprime le token d'enregistrement"""
+        self.registration_token = None
+        self.registration_token_expires = None
+        self.save(update_fields=['registration_token', 'registration_token_expires'])

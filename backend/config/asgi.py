@@ -16,16 +16,22 @@ django_asgi_app = get_asgi_application()
 
 # Import après l'initialisation Django
 from apps.sessions.routing import websocket_urlpatterns
+from apps.postes.middleware import ClientCertificateMiddleware, ClientCertAuthMiddleware
 
 application = ProtocolTypeRouter({
     # Django ASGI application pour gérer les requêtes HTTP traditionnelles
     "http": django_asgi_app,
 
-    # WebSocket handler
+    # WebSocket handler avec support mTLS pour les clients
+    # Les middlewares s'appliquent dans l'ordre : Certificate -> CertAuth -> Auth -> URLRouter
     "websocket": AllowedHostsOriginValidator(
-        AuthMiddlewareStack(
-            URLRouter(
-                websocket_urlpatterns
+        ClientCertificateMiddleware(
+            ClientCertAuthMiddleware(
+                AuthMiddlewareStack(
+                    URLRouter(
+                        websocket_urlpatterns
+                    )
+                )
             )
         )
     ),

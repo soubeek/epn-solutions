@@ -340,3 +340,14 @@ POSTE_PUBLIC = {
     'PHOTO_MAX_SIZE': 5 * 1024 * 1024,  # 5MB max pour les photos
     'ALLOWED_PHOTO_FORMATS': ['JPEG', 'PNG'],
 }
+
+# ============== Configuration mTLS (certificats clients) ==============
+# Chemin vers le certificat et la clé de la CA interne
+CA_CERT_PATH = config('CA_CERT_PATH', default=str(BASE_DIR / 'certs' / 'ca.crt'))
+CA_KEY_PATH = config('CA_KEY_PATH', default=str(BASE_DIR / 'certs' / 'ca.key'))
+# Mot de passe de la clé CA (None = pas de chiffrement)
+CA_KEY_PASSWORD = config('CA_KEY_PASSWORD', default=None)
+# Durée de validité des certificats clients (en jours)
+CLIENT_CERT_VALIDITY_DAYS = config('CLIENT_CERT_VALIDITY_DAYS', default=365, cast=int)
+# Nom de l'organisation dans les certificats
+CA_ORGANIZATION_NAME = config('CA_ORGANIZATION_NAME', default='EPN')
