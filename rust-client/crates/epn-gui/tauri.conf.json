@@ -9,6 +9,7 @@
     "active": false
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "EPN Client - Poste Public",

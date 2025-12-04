@@ -1,17 +1,38 @@
 // EPN Client - Application JavaScript
-const { invoke } = window.__TAURI__.tauri;
+// Tauri v2 API
 
 // État de l'application
 let currentSession = null;
 let countdownInterval = null;
+let invoke = null;
 
 // Initialisation au chargement
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Application EPN Client démarrée');
 
+    // Vérifier que Tauri est disponible
+    if (!window.__TAURI__) {
+        console.error('Tauri API non disponible (window.__TAURI__ est undefined)');
+        updateConnectionStatus(false);
+        showError('Erreur: API Tauri non disponible');
+        return;
+    }
+
+    if (!window.__TAURI__.core) {
+        console.error('Tauri core non disponible');
+        updateConnectionStatus(false);
+        showError('Erreur: Tauri core non disponible');
+        return;
+    }
+
+    invoke = window.__TAURI__.core.invoke;
+    console.log('Tauri API chargée avec succès');
+
     // Initialiser l'application
     try {
+        console.log('Appel de initialize()...');
         await invoke('initialize');
+        console.log('initialize() réussi');
         updateConnectionStatus(true);
 
         // Charger la configuration
@@ -21,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('Erreur d\'initialisation:', error);
         updateConnectionStatus(false);
-        showError('Impossible de se connecter au serveur');
+        showError('Impossible de se connecter au serveur: ' + error);
     }
 
     // Gérer la touche Entrée sur le champ de code

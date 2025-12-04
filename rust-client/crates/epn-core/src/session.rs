@@ -1,7 +1,8 @@
 // Gestionnaire de session
+use crate::certificate::CertificateStore;
 use crate::config::Config;
 use crate::types::{ClientError, ClientMessage, Result, ServerMessage, SessionInfo, WarningLevel};
-use crate::websocket::WsClient;
+use crate::websocket::{TlsConfig, WsClient};
 use tokio::time::{sleep, Duration};
 
 /// Gestionnaire de session
@@ -11,6 +12,7 @@ pub struct SessionManager {
     config: Config,
     mac_address: String,
     ip_address: String,
+    is_registered: bool,
 }
 
 impl SessionManager {
@@ -29,9 +31,41 @@ impl SessionManager {
 
         tracing::info!("Adresse MAC: {}, IP: {}", mac_address, ip_address);
 
+        // Vérifier si le client est enregistré (a des certificats)
+        let cert_store = CertificateStore::new()?;
+        let is_registered = cert_store.is_registered();
+
+        // Construire l'URL WebSocket pour les clients
+        let ws_url = format!("{}/ws/client/", config.ws_url);
+        tracing::info!("Connexion WebSocket: {}", ws_url);
+
         // Connecter au serveur WebSocket
-        let ws_url = config.ws_sessions_url();
-        let ws_client = WsClient::connect(&ws_url).await?;
+        let mut ws_client = if is_registered {
+            // Utiliser mTLS si enregistré
+            tracing::info!("Client enregistré, utilisation de mTLS");
+            let tls_config = TlsConfig::from_store(&cert_store)?;
+            WsClient::connect_with_tls(&ws_url, tls_config).await?
+        } else {
+            // Mode développement sans certificat
+            tracing::warn!("Client non enregistré, connexion sans authentification");
+            WsClient::connect(&ws_url).await?
+        };
+
+        // Consommer le message de connexion initial
+        match ws_client.recv_timeout(Duration::from_secs(5)).await {
+            Some(ServerMessage::ConnectionEstablished { message, poste_id, poste_nom }) => {
+                tracing::info!(
+                    "✓ Connexion établie: {:?}, poste_id: {:?}, poste_nom: {:?}",
+                    message, poste_id, poste_nom
+                );
+            }
+            Some(other) => {
+                tracing::warn!("Message inattendu à la connexion: {:?}", other);
+            }
+            None => {
+                tracing::warn!("Pas de message de connexion reçu");
+            }
+        }
 
         Ok(Self {
             ws_client,
@@ -39,7 +73,13 @@ impl SessionManager {
             config,
             mac_address,
             ip_address,
+            is_registered,
         })
+    }
+
+    /// Vérifie si le client est enregistré auprès du serveur
+    pub fn is_registered(&self) -> bool {
+        self.is_registered
     }
 
     /// Valider un code d'accès
@@ -95,10 +135,14 @@ impl SessionManager {
 
         // Attendre la confirmation
         match self.ws_client.recv_timeout(Duration::from_secs(10)).await {
-            Some(ServerMessage::SessionStarted { session }) => {
-                tracing::info!("✓ Session démarrée: {}", session.id);
-                self.current_session = Some(session.clone());
-                Ok(session)
+            Some(ServerMessage::SessionStarted { session: started }) => {
+                tracing::info!("✓ Session démarrée: {}", started.id);
+                // Mettre à jour la session existante avec les nouvelles infos
+                if let Some(session) = &mut self.current_session {
+                    session.remaining_time = started.remaining_time;
+                    session.status = started.status;
+                }
+                Ok(self.current_session.clone().ok_or(ClientError::SessionNotFound)?)
             }
             Some(ServerMessage::Error { message }) => {
                 tracing::error!("Erreur serveur: {}", message);
@@ -137,8 +181,10 @@ impl SessionManager {
                     }
                     return Ok(remaining);
                 }
-                Some(ServerMessage::SessionTerminated { reason, message }) => {
-                    tracing::warn!("Session terminée: {} - {}", reason, message);
+                Some(ServerMessage::SessionTerminated { reason, message, raison, .. }) => {
+                    let r = reason.or(raison).unwrap_or_default();
+                    let m = message.unwrap_or_default();
+                    tracing::warn!("Session terminée: {} - {}", r, m);
                     self.current_session = None;
                     return Err(ClientError::SessionExpired);
                 }
@@ -205,8 +251,10 @@ impl SessionManager {
                             callback(session, Some(level));
                         }
                     }
-                    ServerMessage::SessionTerminated { reason, message } => {
-                        tracing::info!("Session terminée: {} - {}", reason, message);
+                    ServerMessage::SessionTerminated { reason, message, raison, .. } => {
+                        let r = reason.or(raison).unwrap_or_default();
+                        let m = message.unwrap_or_default();
+                        tracing::info!("Session terminée: {} - {}", r, m);
                         self.current_session = None;
                         return Ok(());
                     }

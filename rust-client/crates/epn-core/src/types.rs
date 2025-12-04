@@ -2,25 +2,48 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Informations sur une session utilisateur
+/// Informations sur une session utilisateur (format code_valid)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub id: u64,
+    #[serde(rename = "code_acces")]
     pub code: String,
+    #[serde(rename = "utilisateur")]
     pub user_name: String,
+    #[serde(rename = "poste")]
     pub workstation: String,
+    #[serde(rename = "duree_initiale")]
     pub total_duration: u64,      // Durée totale en secondes
+    #[serde(rename = "temps_restant")]
     pub remaining_time: u64,      // Temps restant en secondes
+    #[serde(rename = "statut")]
     pub status: SessionStatus,
+}
+
+/// Informations de session démarrée (format session_started)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StartedSessionInfo {
+    pub id: u64,
+    #[serde(rename = "code_acces")]
+    pub code: String,
+    #[serde(rename = "temps_restant")]
+    pub remaining_time: u64,
+    #[serde(rename = "statut")]
+    pub status: SessionStatus,
+    #[serde(rename = "debut_session")]
+    pub start_time: String,
 }
 
 /// Statut d'une session
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
+    #[serde(rename = "en_attente")]
     Pending,
+    #[serde(rename = "active")]
     Active,
+    #[serde(rename = "expiree")]
     Expired,
+    #[serde(rename = "terminee")]
     Terminated,
 }
 
@@ -61,6 +84,17 @@ pub enum ClientMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
+    /// Connexion établie (envoyé à la connexion WebSocket)
+    ConnectionEstablished {
+        #[serde(default)]
+        message: Option<String>,
+        #[serde(default)]
+        poste_id: Option<u64>,
+        #[serde(default)]
+        poste_nom: Option<String>,
+    },
+    /// Réponse au heartbeat
+    HeartbeatAck,
     /// Code valide avec informations de session
     CodeValid {
         session: SessionInfo,
@@ -71,17 +105,31 @@ pub enum ServerMessage {
     },
     /// Session démarrée
     SessionStarted {
-        session: SessionInfo,
+        session: StartedSessionInfo,
     },
     /// Mise à jour du temps
     TimeUpdate {
+        #[serde(default)]
+        session_id: Option<u64>,
+        #[serde(rename = "temps_restant")]
         remaining: u64,
-        percentage: f32,
+        #[serde(rename = "temps_restant_minutes", default)]
+        remaining_minutes: Option<u64>,
+        #[serde(rename = "pourcentage_utilise", default)]
+        percentage: Option<f32>,
+        #[serde(rename = "statut", default)]
+        status: Option<SessionStatus>,
     },
     /// Session terminée
     SessionTerminated {
-        reason: String,
-        message: String,
+        #[serde(default)]
+        reason: Option<String>,
+        #[serde(default)]
+        message: Option<String>,
+        #[serde(default)]
+        session_id: Option<u64>,
+        #[serde(default)]
+        raison: Option<String>,
     },
     /// Avertissement de temps
     Warning {
