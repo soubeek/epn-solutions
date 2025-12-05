@@ -26,6 +26,7 @@ urlpatterns = [
     path('api/utilisateurs/', include('apps.utilisateurs.urls')),
     path('api/postes/', include('apps.postes.urls')),
     path('api/sessions/', include('apps.sessions.urls')),
+    path('api/extension-requests/', include('apps.sessions.extension_urls')),
     path('api/logs/', include('apps.logs.urls')),
 ]
 

@@ -43,6 +43,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
             'date_consentement',
             'created_by',
             'notes',
+            'is_guest',
             'nombre_sessions_total',
             'sessions_count',
             'derniere_session',
@@ -59,6 +60,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
             'nombre_sessions_total',
             'derniere_session',
             'can_create_session',
+            'is_guest',
             'created_at',
             'updated_at'
         ]
@@ -132,6 +134,7 @@ class UtilisateurListSerializer(serializers.ModelSerializer):
             'full_name',
             'email',
             'telephone',
+            'is_guest',
             'sessions_count',
             'derniere_session',
             'created_at'

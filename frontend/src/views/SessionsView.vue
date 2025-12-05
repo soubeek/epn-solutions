@@ -33,6 +33,71 @@
       </button>
     </div>
 
+    <!-- Demandes de prolongation en attente -->
+    <div v-if="pendingExtensions.length > 0" class="mb-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+        <span class="relative flex h-3 w-3 mr-2">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+        </span>
+        Demandes de prolongation ({{ pendingExtensions.length }})
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div
+          v-for="ext in pendingExtensions"
+          :key="ext.id"
+          class="card border-2 border-amber-200 bg-amber-50"
+        >
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <div class="text-lg font-mono font-bold text-amber-700">
+                {{ ext.session_code }}
+              </div>
+              <div class="text-sm text-gray-600">
+                {{ ext.utilisateur_nom }}
+              </div>
+              <div class="text-sm text-gray-500">
+                {{ ext.poste_nom }}
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-2xl font-bold text-amber-600">
+                +{{ ext.minutes_requested }} min
+              </div>
+              <div class="text-xs text-gray-500">
+                {{ formatTimeAgo(ext.created_at) }}
+              </div>
+            </div>
+          </div>
+          <div class="text-sm text-gray-600 mb-3">
+            Temps restant actuel: <span class="font-medium">{{ formatTime(ext.temps_restant) }}</span>
+          </div>
+          <div class="flex space-x-2">
+            <button
+              @click="respondToExtension(ext.id, true)"
+              class="flex-1 btn btn-primary text-sm"
+              :disabled="respondingExtension === ext.id"
+            >
+              <svg class="w-4 h-4 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              Approuver
+            </button>
+            <button
+              @click="respondToExtension(ext.id, false)"
+              class="flex-1 btn btn-danger text-sm"
+              :disabled="respondingExtension === ext.id"
+            >
+              <svg class="w-4 h-4 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Refuser
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Sessions list -->
     <div class="card">
       <div v-if="loading" class="text-center py-12">
@@ -57,7 +122,10 @@
                 Poste
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Temps
+                Temps restant
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Temps écoulé
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Statut
@@ -75,7 +143,12 @@
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-gray-900">{{ session.utilisateur_nom }}</div>
+                <div class="text-sm font-medium text-gray-900">
+                  {{ session.utilisateur_nom }}
+                  <span v-if="session.is_guest" class="ml-2 px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded-full">
+                    Invité
+                  </span>
+                </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="text-sm text-gray-900">{{ session.poste_nom }}</div>
@@ -89,6 +162,11 @@
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm text-gray-900">
+                  {{ formatTime(session.temps_ecoule || 0) }}
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
                 <span
                   class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                   :class="getStatusClass(session.statut)"
@@ -98,14 +176,14 @@
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                 <button
-                  v-if="session.statut === 'active'"
+                  v-if="['active', 'en_attente', 'suspendue'].includes(session.statut)"
                   @click="addTime(session)"
                   class="text-blue-600 hover:text-blue-900"
                 >
                   + Temps
                 </button>
                 <button
-                  v-if="session.statut === 'active'"
+                  v-if="['active', 'en_attente', 'suspendue'].includes(session.statut)"
                   @click="terminateSession(session)"
                   class="text-red-600 hover:text-red-900"
                 >
@@ -142,7 +220,28 @@
           </div>
 
           <form @submit.prevent="handleCreateSession" class="space-y-4">
-            <div>
+            <!-- Toggle Guest/Normal -->
+            <div class="flex space-x-2 mb-4">
+              <button
+                type="button"
+                @click="isGuestSession = false"
+                class="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
+                :class="!isGuestSession ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+              >
+                Utilisateur enregistré
+              </button>
+              <button
+                type="button"
+                @click="isGuestSession = true"
+                class="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
+                :class="isGuestSession ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+              >
+                Session invité
+              </button>
+            </div>
+
+            <!-- Sélection utilisateur (uniquement si pas guest) -->
+            <div v-if="!isGuestSession">
               <label class="label">Utilisateur *</label>
               <select v-model="createForm.utilisateur" class="input" required>
                 <option value="">Sélectionner un utilisateur</option>
@@ -150,6 +249,19 @@
                   {{ user.full_name }}
                 </option>
               </select>
+            </div>
+
+            <!-- Info guest -->
+            <div v-else class="bg-purple-50 border border-purple-200 p-4 rounded-lg">
+              <div class="flex items-center">
+                <svg class="w-5 h-5 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span class="text-sm text-purple-700 font-medium">Session invité anonyme</span>
+              </div>
+              <p class="text-xs text-purple-600 mt-2">
+                Un identifiant unique sera généré automatiquement (ex: GUEST-ABC123)
+              </p>
             </div>
 
             <div>
@@ -186,6 +298,9 @@
 
             <div v-if="createdCode" class="bg-green-50 border border-green-200 p-4 rounded-lg">
               <p class="text-sm text-green-700 mb-2">Session créée avec succès !</p>
+              <p v-if="guestIdentifier" class="text-sm text-purple-600 mb-2 text-center">
+                Identifiant invité : <span class="font-mono font-bold">{{ guestIdentifier }}</span>
+              </p>
               <p class="text-2xl font-mono font-bold text-green-900 text-center">
                 {{ createdCode }}
               </p>
@@ -296,7 +411,7 @@ import { ref, computed, onMounted } from 'vue'
 import MainLayout from '@/components/Layout/MainLayout.vue'
 import ConfirmModal from '@/components/common/ConfirmModal.vue'
 import SessionDetailModal from '@/components/sessions/SessionDetailModal.vue'
-import { sessionsService, utilisateursService, postesService } from '@/services/api'
+import { sessionsService, utilisateursService, postesService, extensionRequestsService } from '@/services/api'
 import { useToast } from '@/composables/useToast'
 
 const { success, error: toastError } = useToast()
@@ -306,6 +421,7 @@ const loading = ref(true)
 const filterStatus = ref('all')
 
 const showCreateModal = ref(false)
+const isGuestSession = ref(false)
 const createForm = ref({
   utilisateur: '',
   poste: '',
@@ -318,6 +434,7 @@ const availablePostes = ref([])
 const creating = ref(false)
 const createError = ref(null)
 const createdCode = ref(null)
+const guestIdentifier = ref(null)
 
 const showAddTimeModal = ref(false)
 const selectedSession = ref(null)
@@ -337,6 +454,10 @@ const confirmModalConfig = ref({
   cancelText: 'Annuler'
 })
 const sessionToTerminate = ref(null)
+
+// Extension requests (demandes de prolongation)
+const pendingExtensions = ref([])
+const respondingExtension = ref(null)
 
 const sessionsActives = computed(() => {
   return sessions.value.filter(s => s.statut === 'active')
@@ -381,11 +502,12 @@ async function openCreateModal() {
 
 function closeCreateModal() {
   showCreateModal.value = false
+  isGuestSession.value = false
+  guestIdentifier.value = null
   createForm.value = {
     utilisateur: '',
     poste: '',
     duree_minutes: 60,
-    operateur: 'admin',
     notes: ''
   }
 }
@@ -395,12 +517,26 @@ async function handleCreateSession() {
   createError.value = null
 
   try {
-    const response = await sessionsService.create(createForm.value)
-    createdCode.value = response.data.code_acces
-    success('Session créée avec succès')
+    let response
+    if (isGuestSession.value) {
+      // Création d'une session invité
+      response = await sessionsService.createGuest({
+        poste: createForm.value.poste,
+        duree_minutes: createForm.value.duree_minutes,
+        notes: createForm.value.notes
+      })
+      createdCode.value = response.data.code_acces
+      guestIdentifier.value = response.data.guest_identifier
+      success(`Session invité créée (${response.data.guest_identifier})`)
+    } else {
+      // Création d'une session normale
+      response = await sessionsService.create(createForm.value)
+      createdCode.value = response.data.code_acces
+      success('Session créée avec succès')
+    }
     loadSessions()
   } catch (err) {
-    createError.value = err.response?.data?.detail || 'Erreur lors de la création'
+    createError.value = err.response?.data?.detail || err.response?.data?.poste?.[0] || 'Erreur lors de la création'
     toastError(createError.value)
   } finally {
     creating.value = false
@@ -457,9 +593,19 @@ async function confirmTerminateSession() {
   }
 }
 
-function viewDetails(session) {
-  detailSession.value = session
+async function viewDetails(session) {
+  // Charger les détails complets de la session
   showDetailModal.value = true
+  detailSession.value = null  // Afficher le loading
+
+  try {
+    const response = await sessionsService.getById(session.id)
+    detailSession.value = response.data
+  } catch (err) {
+    console.error('Erreur chargement détails session:', err)
+    toastError('Erreur lors du chargement des détails')
+    showDetailModal.value = false
+  }
 }
 
 function handleDetailAddTime(session) {
@@ -506,9 +652,61 @@ function getStatusLabel(statut) {
   return labels[statut] || statut
 }
 
+// Extension requests functions
+async function loadPendingExtensions() {
+  try {
+    const response = await extensionRequestsService.getPending()
+    pendingExtensions.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
+  } catch (err) {
+    console.error('Erreur chargement demandes prolongation:', err)
+  }
+}
+
+async function respondToExtension(id, approve) {
+  respondingExtension.value = id
+  try {
+    await extensionRequestsService.respond(id, approve)
+    if (approve) {
+      success('Prolongation approuvée')
+    } else {
+      success('Prolongation refusée')
+    }
+    // Recharger les listes
+    await Promise.all([loadPendingExtensions(), loadSessions()])
+  } catch (err) {
+    toastError('Erreur lors de la réponse')
+    console.error(err)
+  } finally {
+    respondingExtension.value = null
+  }
+}
+
+function formatTimeAgo(dateString) {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffSecs = Math.floor(diffMs / 1000)
+  const diffMins = Math.floor(diffSecs / 60)
+  const diffHours = Math.floor(diffMins / 60)
+
+  if (diffSecs < 60) {
+    return 'à l\'instant'
+  } else if (diffMins < 60) {
+    return `il y a ${diffMins} min`
+  } else if (diffHours < 24) {
+    return `il y a ${diffHours}h`
+  } else {
+    return date.toLocaleDateString('fr-FR')
+  }
+}
+
 onMounted(() => {
   loadSessions()
+  loadPendingExtensions()
   // Rafraîchissement automatique toutes les 5 secondes
-  setInterval(loadSessions, 5000)
+  setInterval(() => {
+    loadSessions()
+    loadPendingExtensions()
+  }, 5000)
 })
 </script>

@@ -22,6 +22,7 @@ class PosteSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'nom',
+            'type_poste',
             'ip_address',
             'mac_address',
             'statut',
@@ -126,13 +127,17 @@ class PosteListSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'nom',
+            'type_poste',
             'ip_address',
+            'mac_address',
             'statut',
             'emplacement',
             'est_en_ligne',
             'est_disponible',
             'session_active_code',
-            'derniere_connexion'
+            'derniere_connexion',
+            'discovered_hostname',
+            'discovered_at'
         ]
 
     def get_session_active_code(self, obj):
@@ -226,4 +231,108 @@ class PosteHeartbeatSerializer(serializers.Serializer):
                     "Format d'adresse MAC invalide. Format attendu: AA:BB:CC:DD:EE:FF"
                 )
             return value.upper()
+        return value
+
+
+# ============== Serializers pour la découverte automatique ==============
+
+class DiscoveryRequestSerializer(serializers.Serializer):
+    """
+    Serializer pour les demandes de découverte client
+    Le client envoie ses informations pour s'enregistrer automatiquement
+    """
+    discovery_token = serializers.CharField(
+        max_length=64,
+        required=True,
+        help_text="Token de découverte partagé"
+    )
+    hostname = serializers.CharField(
+        max_length=255,
+        required=True,
+        help_text="Nom de la machine cliente"
+    )
+    mac_address = serializers.CharField(
+        max_length=17,
+        required=True,
+        help_text="Adresse MAC de la machine"
+    )
+    ip_address = serializers.IPAddressField(
+        protocol='IPv4',
+        required=False,
+        help_text="Adresse IP (optionnel, extraite de la requête sinon)"
+    )
+
+    def validate_mac_address(self, value):
+        """Validation et normalisation de l'adresse MAC"""
+        import re
+        mac_pattern = r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'
+        if not re.match(mac_pattern, value):
+            raise serializers.ValidationError(
+                "Format d'adresse MAC invalide. Format attendu: AA:BB:CC:DD:EE:FF"
+            )
+        return value.upper()
+
+
+class DiscoveryStatusRequestSerializer(serializers.Serializer):
+    """
+    Serializer pour vérifier le statut d'une découverte
+    Le client poll ce endpoint pour savoir s'il a été validé
+    """
+    mac_address = serializers.CharField(
+        max_length=17,
+        required=True,
+        help_text="Adresse MAC de la machine"
+    )
+
+    def validate_mac_address(self, value):
+        """Validation et normalisation de l'adresse MAC"""
+        import re
+        mac_pattern = r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'
+        if not re.match(mac_pattern, value):
+            raise serializers.ValidationError(
+                "Format d'adresse MAC invalide. Format attendu: AA:BB:CC:DD:EE:FF"
+            )
+        return value.upper()
+
+
+class PendingPosteSerializer(serializers.ModelSerializer):
+    """
+    Serializer pour les postes en attente de validation
+    Affiche les informations de découverte
+    """
+    class Meta:
+        model = Poste
+        fields = [
+            'id',
+            'nom',
+            'mac_address',
+            'ip_address',
+            'discovered_hostname',
+            'discovered_at',
+            'created_at'
+        ]
+        read_only_fields = fields
+
+
+class ValidateDiscoverySerializer(serializers.Serializer):
+    """
+    Serializer pour la validation d'un poste découvert
+    Permet optionnellement de renommer le poste
+    """
+    nom = serializers.CharField(
+        max_length=50,
+        required=False,
+        help_text="Nouveau nom du poste (optionnel)"
+    )
+
+    def validate_nom(self, value):
+        """Vérifier que le nom n'est pas déjà utilisé"""
+        if value:
+            instance = self.context.get('instance')
+            instance_id = instance.id if instance else None
+            existing = Poste.objects.filter(nom=value).exclude(id=instance_id)
+            if existing.exists():
+                raise serializers.ValidationError(
+                    f"Un poste avec le nom '{value}' existe déjà"
+                )
         return value

@@ -174,6 +174,11 @@ class Session(TimeStampedModel):
         """Temps restant en minutes"""
         return self.temps_restant // 60
 
+    @property
+    def is_guest_session(self):
+        """Retourne True si c'est une session invité"""
+        return self.utilisateur.is_guest
+
     def ajouter_temps(self, secondes, operateur):
         """
         Ajoute du temps à la session
@@ -296,3 +301,142 @@ class Session(TimeStampedModel):
                 )
 
             self.save(update_fields=['temps_restant', 'statut', 'fin_session', 'updated_at'])
+
+
+class ExtensionRequest(TimeStampedModel):
+    """
+    Modèle pour les demandes de prolongation de session.
+    Un utilisateur peut demander une prolongation depuis le client,
+    et un administrateur peut l'approuver ou la refuser.
+    """
+
+    STATUT_CHOICES = [
+        ('pending', 'En attente'),
+        ('approved', 'Approuvée'),
+        ('denied', 'Refusée'),
+        ('expired', 'Expirée'),
+    ]
+
+    # Relation avec la session
+    session = models.ForeignKey(
+        Session,
+        on_delete=models.CASCADE,
+        related_name='extension_requests',
+        verbose_name="Session"
+    )
+
+    # Durée demandée (en secondes)
+    minutes_requested = models.IntegerField(
+        default=15,
+        verbose_name="Minutes demandées",
+        help_text="Nombre de minutes de prolongation demandées"
+    )
+
+    # Statut de la demande
+    statut = models.CharField(
+        max_length=20,
+        choices=STATUT_CHOICES,
+        default='pending',
+        verbose_name="Statut"
+    )
+
+    # Réponse de l'admin
+    responded_by = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Répondu par"
+    )
+    responded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Date de réponse"
+    )
+    response_message = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Message de réponse"
+    )
+
+    class Meta:
+        db_table = 'extension_requests'
+        ordering = ['-created_at']
+        verbose_name = 'Demande de prolongation'
+        verbose_name_plural = 'Demandes de prolongation'
+        indexes = [
+            models.Index(fields=['statut']),
+            models.Index(fields=['session', 'statut']),
+            models.Index(fields=['-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Prolongation {self.session.code_acces} - {self.minutes_requested}min ({self.get_statut_display()})"
+
+    @property
+    def is_pending(self):
+        """Vérifie si la demande est en attente"""
+        return self.statut == 'pending'
+
+    @property
+    def seconds_requested(self):
+        """Convertit les minutes en secondes"""
+        return self.minutes_requested * 60
+
+    def approve(self, admin_username, message=None):
+        """
+        Approuve la demande de prolongation.
+        Ajoute le temps à la session.
+        """
+        if self.statut != 'pending':
+            raise ValueError("Cette demande a déjà été traitée")
+
+        # Vérifier que la session est encore active
+        if self.session.statut not in ['active', 'suspendue']:
+            self.statut = 'expired'
+            self.response_message = "Session terminée"
+            self.save()
+            raise ValueError("La session n'est plus active")
+
+        # Ajouter le temps à la session
+        self.session.ajouter_temps(self.seconds_requested, admin_username)
+
+        # Mettre à jour la demande
+        self.statut = 'approved'
+        self.responded_by = admin_username
+        self.responded_at = timezone.now()
+        self.response_message = message or f"Prolongation de {self.minutes_requested} minutes accordée"
+        self.save()
+
+        # Log
+        from apps.logs.models import Log
+        Log.objects.create(
+            session=self.session,
+            action='extension_approved',
+            operateur=admin_username,
+            details=f"Prolongation de {self.minutes_requested} min approuvée pour {self.session.code_acces}"
+        )
+
+        return True
+
+    def deny(self, admin_username, message=None):
+        """
+        Refuse la demande de prolongation.
+        """
+        if self.statut != 'pending':
+            raise ValueError("Cette demande a déjà été traitée")
+
+        self.statut = 'denied'
+        self.responded_by = admin_username
+        self.responded_at = timezone.now()
+        self.response_message = message or "Demande refusée"
+        self.save()
+
+        # Log
+        from apps.logs.models import Log
+        Log.objects.create(
+            session=self.session,
+            action='extension_denied',
+            operateur=admin_username,
+            details=f"Prolongation de {self.minutes_requested} min refusée pour {self.session.code_acces}"
+        )

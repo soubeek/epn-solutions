@@ -13,12 +13,27 @@ class Poste(TimeStampedModel):
     """
 
     STATUT_CHOICES = [
+        ('en_attente_validation', 'En attente de validation'),
         ('disponible', 'Disponible'),
         ('occupe', 'Occupé'),
         ('reserve', 'Réservé'),
         ('hors_ligne', 'Hors ligne'),
         ('maintenance', 'En maintenance'),
     ]
+
+    TYPE_POSTE_CHOICES = [
+        ('bureautique', 'Bureautique'),
+        ('gaming', 'Gaming'),
+    ]
+
+    # Type de poste
+    type_poste = models.CharField(
+        max_length=20,
+        choices=TYPE_POSTE_CHOICES,
+        default='bureautique',
+        verbose_name="Type de poste",
+        help_text="Bureautique (navigateur, office) ou Gaming (Steam, launchers)"
+    )
 
     # Identification
     nom = models.CharField(
@@ -36,6 +51,7 @@ class Poste(TimeStampedModel):
     )
     mac_address = models.CharField(
         max_length=17,
+        unique=True,
         blank=True,
         null=True,
         verbose_name="Adresse MAC",
@@ -44,7 +60,7 @@ class Poste(TimeStampedModel):
 
     # État
     statut = models.CharField(
-        max_length=20,
+        max_length=25,
         choices=STATUT_CHOICES,
         default='disponible',
         verbose_name="Statut"
@@ -128,6 +144,33 @@ class Poste(TimeStampedModel):
         null=True,
         blank=True,
         verbose_name="Expiration du token"
+    )
+
+    # Champs de découverte automatique
+    discovered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Date de découverte",
+        help_text="Date de la première découverte automatique"
+    )
+    discovered_hostname = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name="Hostname découvert",
+        help_text="Hostname reporté par le client lors de la découverte"
+    )
+    validated_by = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        verbose_name="Validé par",
+        help_text="Utilisateur ayant validé ce poste"
+    )
+    validated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Date de validation"
     )
 
     class Meta:
@@ -216,3 +259,16 @@ class Poste(TimeStampedModel):
         self.registration_token = None
         self.registration_token_expires = None
         self.save(update_fields=['registration_token', 'registration_token_expires'])
+
+    # Méthodes de découverte
+    @property
+    def is_pending_validation(self):
+        """Vérifie si le poste est en attente de validation"""
+        return self.statut == 'en_attente_validation'
+
+    def validate_discovery(self, username):
+        """Valide un poste découvert automatiquement"""
+        self.statut = 'hors_ligne'
+        self.validated_by = username
+        self.validated_at = timezone.now()
+        self.save(update_fields=['statut', 'validated_by', 'validated_at'])

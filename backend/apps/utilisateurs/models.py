@@ -3,6 +3,9 @@ Modèle Utilisateur pour le registre des utilisateurs
 Conforme RGPD
 """
 
+import secrets
+import string
+
 from django.db import models
 from django.core.validators import RegexValidator
 from django.utils import timezone
@@ -100,6 +103,13 @@ class Utilisateur(TimeStampedModel):
         help_text="Notes internes (non affichées à l'utilisateur)"
     )
 
+    # Utilisateur invité (anonyme)
+    is_guest = models.BooleanField(
+        default=False,
+        verbose_name="Utilisateur invité",
+        help_text="True si c'est un utilisateur invité anonyme"
+    )
+
     # Statistiques
     nombre_sessions_total = models.IntegerField(
         default=0,
@@ -124,10 +134,14 @@ class Utilisateur(TimeStampedModel):
         ]
 
     def __str__(self):
+        if self.is_guest:
+            return self.nom  # Returns "GUEST-ABC123"
         return f"{self.nom} {self.prenom}"
 
     def get_full_name(self):
-        """Retourne le nom complet"""
+        """Retourne le nom complet ou l'identifiant guest"""
+        if self.is_guest:
+            return self.nom  # Returns "GUEST-ABC123"
         return f"{self.prenom} {self.nom}"
 
     @property
@@ -153,11 +167,53 @@ class Utilisateur(TimeStampedModel):
 
     def can_create_session_today(self):
         """Vérifie si l'utilisateur peut créer une session aujourd'hui"""
+        if self.is_guest:
+            return True  # Pas de limite pour les guests
         max_sessions = settings.POSTE_PUBLIC.get('MAX_SESSIONS_PER_USER_PER_DAY', 3)
         return self.sessions_today < max_sessions
 
     def save(self, *args, **kwargs):
         """Override save pour gérer la date de consentement RGPD"""
-        if self.consentement_rgpd and not self.date_consentement:
-            self.date_consentement = timezone.now()
+        # Les guests n'ont pas besoin de consentement explicite
+        if not self.is_guest:
+            if self.consentement_rgpd and not self.date_consentement:
+                self.date_consentement = timezone.now()
         super().save(*args, **kwargs)
+
+    @classmethod
+    def create_guest(cls, created_by):
+        """
+        Crée un utilisateur invité anonyme
+
+        Args:
+            created_by: Nom de l'opérateur créant la session
+
+        Returns:
+            Nouvelle instance Utilisateur marquée comme guest
+        """
+        identifier = cls._generate_guest_identifier()
+        return cls.objects.create(
+            nom=identifier,
+            prenom="",
+            is_guest=True,
+            consentement_rgpd=True,  # Consentement implicite
+            created_by=created_by,
+            notes="Session invité anonyme"
+        )
+
+    @staticmethod
+    def _generate_guest_identifier():
+        """Génère un identifiant unique pour les guests (format GUEST-ABC123)"""
+        alphabet = string.ascii_uppercase + string.digits
+        # Éviter les caractères ambigus
+        alphabet = alphabet.replace('O', '').replace('0', '').replace('I', '').replace('1', '')
+
+        max_attempts = 100
+        for _ in range(max_attempts):
+            suffix = ''.join(secrets.choice(alphabet) for _ in range(6))
+            identifier = f"GUEST-{suffix}"
+            if not Utilisateur.objects.filter(nom=identifier).exists():
+                return identifier
+
+        # Fallback avec timestamp si trop de collisions
+        return f"GUEST-{timezone.now().strftime('%H%M%S')}"

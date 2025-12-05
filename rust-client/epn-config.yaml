@@ -3,8 +3,67 @@ ws_url: ws://localhost:8001
 check_interval: 5
 warning_time: 300
 critical_time: 60
-enable_screen_lock: false
-lock_on_expire: false
+enable_screen_lock: true
+lock_on_expire: true
 logout_on_expire: false
-debug: true 
-log_level: debug 
+# Délai avant verrouillage (en secondes) - laisse le temps de lire la notification
+lock_delay_secs: 5
+# Scripts de nettoyage personnalisés à exécuter en fin de session
+# cleanup_scripts:
+#   - "/usr/local/bin/epn-cleanup.sh"
+debug: true
+log_level: debug
+# Configuration découverte automatique
+discovery_token: test-discovery-token-2024
+discovery_poll_interval: 5
+discovery_max_wait: 300
+
+# ============== Configuration du nettoyage automatique ==============
+# Type de poste: "bureautique" ou "gaming"
+poste_type: bureautique
+# Activer le nettoyage automatique en fin de session
+enable_cleanup: true
+# Nettoyer Firefox (cache, cookies, historique, sessions)
+cleanup_firefox: true
+# Nettoyer LibreOffice (backups, fichiers récents)
+cleanup_libreoffice: true
+# Nettoyer les dossiers utilisateur (Documents, Downloads, Desktop, Pictures, Videos)
+cleanup_user_documents: true
+# Nettoyer l'historique système (bash_history, recent files, trash)
+cleanup_system_history: true
+# Nettoyer les launchers gaming (Steam, Epic, GOG, Ubisoft, EA) - Windows uniquement
+cleanup_gaming_launchers: false
+# Chemins personnalisés à nettoyer
+# cleanup_custom_paths:
+#   - "/home/user/custom_folder"
+# Patterns à exclure du nettoyage
+# cleanup_exclude_patterns:
+#   - ".important"
+#   - "do_not_delete"
+
+# ============== Configuration de la surveillance d'inactivité ==============
+# Activer la surveillance d'inactivité
+inactivity_enabled: true
+# Temps avant avertissement d'inactivité (secondes) - défaut: 300 (5 min)
+inactivity_warning_secs: 300
+# Temps avant fin de session pour inactivité (secondes) - défaut: 600 (10 min)
+inactivity_timeout_secs: 600
+
+# ============== Configuration Gaming (postes jeux vidéo) ==============
+# Activer les fonctionnalités gaming (également activé si poste_type: gaming)
+gaming_enabled: false
+# Launchers à démarrer automatiquement au début de session
+# Valeurs possibles: steam, epic, gog, ubisoft, ea
+# gaming_auto_start_launchers:
+#   - steam
+#   - epic
+# Fermer les launchers en fin de session
+gaming_close_on_end: true
+# Fermer tous les jeux en cours en fin de session
+gaming_close_games_on_end: true
+# Démarrer Steam en mode Big Picture (plein écran TV)
+gaming_steam_big_picture: false
+# Chemins personnalisés vers les launchers (optionnel)
+# gaming_steam_path: "C:\\Program Files (x86)\\Steam\\steam.exe"
+# gaming_epic_path: "C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win64\\EpicGamesLauncher.exe"
+# gaming_gog_path: "C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe"

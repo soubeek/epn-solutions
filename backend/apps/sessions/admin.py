@@ -15,6 +15,7 @@ class SessionAdmin(admin.ModelAdmin):
     list_display = [
         'code_acces',
         'utilisateur',
+        'is_guest_display',
         'poste',
         'statut_display',
         'temps_restant_display',
@@ -24,6 +25,7 @@ class SessionAdmin(admin.ModelAdmin):
 
     list_filter = [
         'statut',
+        'utilisateur__is_guest',
         'created_at',
         'debut_session',
         'poste'
@@ -87,6 +89,13 @@ class SessionAdmin(admin.ModelAdmin):
         'ajouter_15_minutes',
         'ajouter_30_minutes'
     ]
+
+    def is_guest_display(self, obj):
+        """Affichage de l'indicateur invité"""
+        if obj.utilisateur.is_guest:
+            return format_html('<span style="color: purple; font-weight: bold;">Invité</span>')
+        return format_html('<span style="color: gray;">-</span>')
+    is_guest_display.short_description = 'Invité'
 
     def statut_display(self, obj):
         """Affichage coloré du statut"""

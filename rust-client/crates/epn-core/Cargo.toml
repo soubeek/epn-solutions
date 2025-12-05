@@ -33,6 +33,7 @@ local-ip-address = { workspace = true }
 url = { workspace = true }
 base64 = { workspace = true }
 hostname = { workspace = true }
+dirs = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
@@ -43,3 +44,9 @@ tracing = { workspace = true }
 
 # Configuration
 serde_yaml = { workspace = true }
+
+# System actions (screen lock, logout, notifications)
+epn-system = { path = "../epn-system" }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

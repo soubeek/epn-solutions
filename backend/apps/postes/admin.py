@@ -2,7 +2,11 @@
 Django Admin pour Postes
 """
 
+import secrets
+from datetime import timedelta
+
 from django.contrib import admin
+from django.utils import timezone
 from django.utils.html import format_html
 from .models import Poste
 
@@ -13,16 +17,21 @@ class PosteAdmin(admin.ModelAdmin):
 
     list_display = [
         'nom',
+        'type_poste_display',
         'ip_address',
+        'mac_address',
         'statut_display',
         'est_en_ligne_display',
+        'discovered_at',
         'session_active_display',
         'nombre_sessions_total',
         'derniere_connexion'
     ]
 
     list_filter = [
+        'type_poste',
         'statut',
+        ('discovered_at', admin.EmptyFieldListFilter),
         'created_at',
         'derniere_connexion'
     ]
@@ -31,7 +40,8 @@ class PosteAdmin(admin.ModelAdmin):
         'nom',
         'ip_address',
         'mac_address',
-        'emplacement'
+        'emplacement',
+        'discovered_hostname'
     ]
 
     readonly_fields = [
@@ -40,12 +50,23 @@ class PosteAdmin(admin.ModelAdmin):
         'nombre_sessions_total',
         'derniere_connexion',
         'est_en_ligne_display',
-        'session_active_display'
+        'session_active_display',
+        'discovered_at',
+        'discovered_hostname',
+        'validated_by',
+        'validated_at',
+        'certificate_cn',
+        'certificate_fingerprint',
+        'certificate_issued_at',
+        'certificate_expires_at',
+        'is_certificate_revoked',
+        'registration_token',
+        'registration_token_expires'
     ]
 
     fieldsets = (
         ('Identification', {
-            'fields': ('nom', 'emplacement')
+            'fields': ('nom', 'type_poste', 'emplacement')
         }),
         ('Réseau', {
             'fields': (
@@ -61,6 +82,32 @@ class PosteAdmin(admin.ModelAdmin):
                 'session_active_display',
                 'derniere_connexion'
             )
+        }),
+        ('Découverte automatique', {
+            'fields': (
+                'discovered_at',
+                'discovered_hostname',
+                'validated_by',
+                'validated_at'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Certificat mTLS', {
+            'fields': (
+                'certificate_cn',
+                'certificate_fingerprint',
+                'certificate_issued_at',
+                'certificate_expires_at',
+                'is_certificate_revoked'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Enregistrement', {
+            'fields': (
+                'registration_token',
+                'registration_token_expires'
+            ),
+            'classes': ('collapse',)
         }),
         ('Informations', {
             'fields': ('notes',),
@@ -79,12 +126,16 @@ class PosteAdmin(admin.ModelAdmin):
     actions = [
         'marquer_disponible',
         'marquer_maintenance',
-        'marquer_hors_ligne'
+        'marquer_hors_ligne',
+        'valider_postes_decouverts',
+        'generer_tokens_enregistrement',
+        'revoquer_certificats'
     ]
 
     def statut_display(self, obj):
         """Affichage coloré du statut"""
         colors = {
+            'en_attente_validation': '#ff9800',  # Orange vif
             'disponible': 'green',
             'occupe': 'orange',
             'reserve': 'blue',
@@ -92,12 +143,28 @@ class PosteAdmin(admin.ModelAdmin):
             'maintenance': 'gray'
         }
         color = colors.get(obj.statut, 'black')
+        icon = '⏳ ' if obj.statut == 'en_attente_validation' else ''
         return format_html(
-            '<span style="color: {}; font-weight: bold;">{}</span>',
+            '<span style="color: {}; font-weight: bold;">{}{}</span>',
             color,
+            icon,
             obj.get_statut_display()
         )
     statut_display.short_description = 'Statut'
+
+    def type_poste_display(self, obj):
+        """Affichage du type de poste avec icône"""
+        icons = {
+            'bureautique': '🖥️',
+            'gaming': '🎮',
+        }
+        icon = icons.get(obj.type_poste, '')
+        return format_html(
+            '{} {}',
+            icon,
+            obj.get_type_poste_display()
+        )
+    type_poste_display.short_description = 'Type'
 
     def est_en_ligne_display(self, obj):
         """Affichage de l'état en ligne"""
@@ -135,3 +202,78 @@ class PosteAdmin(admin.ModelAdmin):
         """Action pour marquer les postes hors ligne"""
         queryset.update(statut='hors_ligne')
         self.message_user(request, f"{queryset.count()} poste(s) marqué(s) hors ligne")
+
+    @admin.action(description='Valider les postes découverts')
+    def valider_postes_decouverts(self, request, queryset):
+        """Action pour valider les postes en attente de validation"""
+        pending = queryset.filter(statut='en_attente_validation')
+        count = pending.count()
+        if count == 0:
+            self.message_user(
+                request,
+                "Aucun poste en attente de validation sélectionné",
+                level='warning'
+            )
+            return
+
+        for poste in pending:
+            poste.validate_discovery(request.user.username)
+
+        self.message_user(request, f"{count} poste(s) validé(s) avec succès")
+
+    @admin.action(description='Générer tokens d\'enregistrement')
+    def generer_tokens_enregistrement(self, request, queryset):
+        """Action pour générer des tokens d'enregistrement pour les postes validés"""
+        # Exclure les postes en attente et ceux déjà enregistrés
+        eligible = queryset.exclude(
+            statut='en_attente_validation'
+        ).filter(
+            certificate_cn__isnull=True
+        )
+        count = 0
+
+        for poste in eligible:
+            # Ne pas régénérer si un token valide existe
+            if poste.has_pending_registration:
+                continue
+
+            # Générer un nouveau token
+            poste.registration_token = secrets.token_urlsafe(32)
+            poste.registration_token_expires = timezone.now() + timedelta(hours=24)
+            poste.save(update_fields=['registration_token', 'registration_token_expires'])
+            count += 1
+
+        if count == 0:
+            self.message_user(
+                request,
+                "Aucun poste éligible (déjà enregistrés ou en attente de validation)",
+                level='warning'
+            )
+        else:
+            self.message_user(request, f"{count} token(s) d'enregistrement généré(s)")
+
+    @admin.action(description='Révoquer les certificats')
+    def revoquer_certificats(self, request, queryset):
+        """Action pour révoquer les certificats des postes sélectionnés"""
+        registered = queryset.filter(
+            certificate_cn__isnull=False,
+            is_certificate_revoked=False
+        )
+        count = registered.count()
+
+        if count == 0:
+            self.message_user(
+                request,
+                "Aucun poste avec certificat actif sélectionné",
+                level='warning'
+            )
+            return
+
+        for poste in registered:
+            poste.revoke_certificate()
+
+        self.message_user(
+            request,
+            f"{count} certificat(s) révoqué(s). Les clients devront se ré-enregistrer.",
+            level='success'
+        )

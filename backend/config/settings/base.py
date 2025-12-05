@@ -351,3 +351,10 @@ CA_KEY_PASSWORD = config('CA_KEY_PASSWORD', default=None)
 CLIENT_CERT_VALIDITY_DAYS = config('CLIENT_CERT_VALIDITY_DAYS', default=365, cast=int)
 # Nom de l'organisation dans les certificats
 CA_ORGANIZATION_NAME = config('CA_ORGANIZATION_NAME', default='EPN')
+
+# ============== Configuration découverte automatique clients ==============
+# Token partagé pour l'auto-découverte des clients
+# Générer avec: python -c "import secrets; print(secrets.token_urlsafe(32))"
+DISCOVERY_TOKEN = config('DISCOVERY_TOKEN', default=None)
+# Token précédent pour rotation gracieuse (optionnel)
+DISCOVERY_TOKEN_PREVIOUS = config('DISCOVERY_TOKEN_PREVIOUS', default=None)

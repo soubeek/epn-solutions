@@ -13,11 +13,16 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 
 from .models import Poste
+from django.conf import settings
 from .serializers import (
     PosteSerializer,
     PosteListSerializer,
     PosteStatsSerializer,
-    PosteHeartbeatSerializer
+    PosteHeartbeatSerializer,
+    DiscoveryRequestSerializer,
+    DiscoveryStatusRequestSerializer,
+    PendingPosteSerializer,
+    ValidateDiscoverySerializer
 )
 from .certificate_manager import get_certificate_manager
 
@@ -429,3 +434,353 @@ class PosteViewSet(viewsets.ModelViewSet):
                 {'error': f'CA non disponible: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    # ============== Endpoints pour la découverte automatique ==============
+
+    def _get_client_ip(self, request):
+        """Extrait l'adresse IP du client depuis la requête"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')
+
+    def _validate_discovery_token(self, token):
+        """Vérifie si le token de découverte est valide"""
+        valid_tokens = []
+        if settings.DISCOVERY_TOKEN:
+            valid_tokens.append(settings.DISCOVERY_TOKEN)
+        if settings.DISCOVERY_TOKEN_PREVIOUS:
+            valid_tokens.append(settings.DISCOVERY_TOKEN_PREVIOUS)
+        return token in valid_tokens
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def discover(self, request):
+        """
+        Endpoint de découverte client.
+        Crée un poste en attente de validation si il n'existe pas.
+
+        POST /api/postes/discover/
+        Body: {
+            "discovery_token": "xxx...",
+            "hostname": "PC-01",
+            "mac_address": "00:11:22:33:44:55",
+            "ip_address": "192.168.1.100"  (optionnel)
+        }
+
+        Response:
+        {
+            "status": "pending_validation" | "validated" | "registered",
+            "poste_id": 123,
+            "message": "..."
+        }
+        """
+        serializer = DiscoveryRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        discovery_token = data['discovery_token']
+        hostname = data['hostname']
+        mac_address = data['mac_address']
+        ip_address = data.get('ip_address') or self._get_client_ip(request)
+
+        # Vérifier le token de découverte
+        if not self._validate_discovery_token(discovery_token):
+            return Response(
+                {'error': 'Token de découverte invalide'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Chercher un poste existant avec cette MAC
+        try:
+            poste = Poste.objects.get(mac_address=mac_address)
+
+            # Poste déjà enregistré avec certificat
+            if poste.is_registered:
+                return Response({
+                    'status': 'registered',
+                    'poste_id': poste.id,
+                    'poste_nom': poste.nom,
+                    'message': 'Client déjà enregistré avec certificat valide'
+                })
+
+            # Poste en attente de validation
+            if poste.is_pending_validation:
+                return Response({
+                    'status': 'pending_validation',
+                    'poste_id': poste.id,
+                    'poste_nom': poste.nom,
+                    'message': 'En attente de validation par un administrateur'
+                })
+
+            # Poste validé mais pas encore enregistré
+            return Response({
+                'status': 'validated',
+                'poste_id': poste.id,
+                'poste_nom': poste.nom,
+                'has_registration_token': poste.has_pending_registration,
+                'message': 'Poste validé, en attente du token d\'enregistrement'
+            })
+
+        except Poste.DoesNotExist:
+            # Créer un nouveau poste en attente de validation
+            # Générer un nom automatique basé sur la MAC
+            auto_nom = f"AUTO-{mac_address[-8:].replace(':', '')}"
+
+            # Vérifier que le nom n'existe pas déjà
+            counter = 1
+            base_nom = auto_nom
+            while Poste.objects.filter(nom=auto_nom).exists():
+                auto_nom = f"{base_nom}-{counter}"
+                counter += 1
+
+            poste = Poste.objects.create(
+                nom=auto_nom,
+                mac_address=mac_address,
+                ip_address=ip_address,
+                statut='en_attente_validation',
+                discovered_at=timezone.now(),
+                discovered_hostname=hostname
+            )
+
+            # Log la découverte
+            from apps.logs.models import Log
+            Log.log_action(
+                action='client_discovered',
+                details=f"Nouveau client découvert: {auto_nom} ({mac_address})",
+                operateur='system',
+                metadata={
+                    'poste_id': poste.id,
+                    'mac_address': mac_address,
+                    'ip_address': ip_address,
+                    'hostname': hostname,
+                }
+            )
+
+            return Response({
+                'status': 'pending_validation',
+                'poste_id': poste.id,
+                'poste_nom': poste.nom,
+                'message': 'Poste découvert, en attente de validation par un administrateur'
+            }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def check_discovery_status(self, request):
+        """
+        Vérifie le statut d'un client découvert.
+        Le client peut polluer cet endpoint pour savoir s'il a été validé.
+
+        POST /api/postes/check_discovery_status/
+        Body: {
+            "mac_address": "00:11:22:33:44:55"
+        }
+
+        Response:
+        {
+            "status": "pending_validation" | "validated" | "registered" | "unknown",
+            "poste_id": 123,
+            "poste_nom": "PC-01",
+            "has_registration_token": true/false,
+            "registration_token": "xxx..."  (seulement si validé et token généré)
+        }
+        """
+        serializer = DiscoveryStatusRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        mac_address = serializer.validated_data['mac_address']
+
+        try:
+            poste = Poste.objects.get(mac_address=mac_address)
+
+            # Poste déjà enregistré
+            if poste.is_registered:
+                return Response({
+                    'status': 'registered',
+                    'poste_id': poste.id,
+                    'poste_nom': poste.nom,
+                    'message': 'Client enregistré'
+                })
+
+            # Poste en attente de validation
+            if poste.is_pending_validation:
+                return Response({
+                    'status': 'pending_validation',
+                    'poste_id': poste.id,
+                    'poste_nom': poste.nom,
+                    'message': 'En attente de validation'
+                })
+
+            # Poste validé - vérifier s'il a un token
+            response_data = {
+                'status': 'validated',
+                'poste_id': poste.id,
+                'poste_nom': poste.nom,
+                'has_registration_token': poste.has_pending_registration,
+            }
+
+            # Si le poste a un token valide, le retourner
+            if poste.has_pending_registration:
+                response_data['registration_token'] = poste.registration_token
+                response_data['message'] = 'Token d\'enregistrement disponible'
+            else:
+                response_data['message'] = 'Validé, en attente du token d\'enregistrement'
+
+            return Response(response_data)
+
+        except Poste.DoesNotExist:
+            return Response({
+                'status': 'unknown',
+                'message': 'Aucun poste trouvé avec cette adresse MAC'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def pending_validation(self, request):
+        """
+        Liste les postes en attente de validation.
+
+        GET /api/postes/pending_validation/
+        """
+        postes = Poste.objects.filter(statut='en_attente_validation').order_by('-discovered_at')
+        serializer = PendingPosteSerializer(postes, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def validate_discovery(self, request, pk=None):
+        """
+        Valide un poste découvert automatiquement.
+
+        POST /api/postes/{id}/validate_discovery/
+        Body: {
+            "nom": "PC-Salle-01"  (optionnel: pour renommer)
+        }
+
+        Response:
+        {
+            "message": "Poste validé",
+            "poste_id": 123,
+            "poste_nom": "PC-Salle-01"
+        }
+        """
+        poste = self.get_object()
+
+        if not poste.is_pending_validation:
+            return Response(
+                {'error': f'Ce poste n\'est pas en attente de validation (statut: {poste.statut})'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = ValidateDiscoverySerializer(
+            data=request.data,
+            context={'instance': poste}
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Renommer si demandé
+        new_nom = serializer.validated_data.get('nom')
+        if new_nom:
+            poste.nom = new_nom
+
+        # Valider le poste
+        username = request.user.username if request.user.is_authenticated else 'admin'
+        poste.validate_discovery(username)
+
+        # Log la validation
+        from apps.logs.models import Log
+        Log.log_action(
+            action='client_validated',
+            details=f"Poste {poste.nom} validé par {username}",
+            operateur=username,
+            metadata={
+                'poste_id': poste.id,
+                'mac_address': poste.mac_address,
+                'discovered_hostname': poste.discovered_hostname,
+            }
+        )
+
+        return Response({
+            'message': f'Poste {poste.nom} validé avec succès',
+            'poste_id': poste.id,
+            'poste_nom': poste.nom
+        })
+
+    # ============== Endpoints pour les commandes à distance ==============
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def remote_command(self, request, pk=None):
+        """
+        Envoie une commande à distance à un poste.
+
+        POST /api/postes/{id}/remote_command/
+        Body: {
+            "command": "lock" | "message" | "shutdown" | "restart",
+            "payload": "..."  (optionnel, requis pour 'message')
+        }
+
+        Response:
+        {
+            "message": "Commande envoyée",
+            "command": "lock",
+            "poste_id": 123
+        }
+        """
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        poste = self.get_object()
+
+        command = request.data.get('command')
+        payload = request.data.get('payload')
+
+        valid_commands = ['lock', 'message', 'shutdown', 'restart']
+        if command not in valid_commands:
+            return Response(
+                {'error': f'Commande invalide. Commandes valides: {valid_commands}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if command == 'message' and not payload:
+            return Response(
+                {'error': 'Le champ "payload" est requis pour la commande "message"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Vérifier que le poste est en ligne
+        if not poste.est_en_ligne:
+            return Response(
+                {'error': f'Le poste {poste.nom} n\'est pas en ligne'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Envoyer la commande via WebSocket
+        channel_layer = get_channel_layer()
+        group_name = f'poste_{poste.id}'
+
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type': 'remote_command',
+                'command': command,
+                'payload': payload,
+            }
+        )
+
+        # Log la commande
+        from apps.logs.models import Log
+        Log.log_action(
+            action='remote_command',
+            details=f"Commande '{command}' envoyée au poste {poste.nom}",
+            operateur=request.user.username if request.user.is_authenticated else 'admin',
+            metadata={
+                'poste_id': poste.id,
+                'command': command,
+                'payload': payload,
+            }
+        )
+
+        return Response({
+            'message': f'Commande "{command}" envoyée au poste {poste.nom}',
+            'command': command,
+            'poste_id': poste.id
+        })

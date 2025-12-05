@@ -18,6 +18,9 @@ pub struct SessionInfo {
     pub remaining_time: u64,      // Temps restant en secondes
     #[serde(rename = "statut")]
     pub status: SessionStatus,
+    /// Indique si c'est une reconnexion (session déjà active)
+    #[serde(default)]
+    pub is_reconnection: bool,
 }
 
 /// Informations de session démarrée (format session_started)
@@ -78,6 +81,18 @@ pub enum ClientMessage {
     },
     /// Heartbeat pour maintenir la connexion
     Heartbeat,
+    /// Acquittement d'une commande à distance
+    CommandAck {
+        command: String,
+        success: bool,
+        #[serde(default)]
+        error: Option<String>,
+    },
+    /// Demander une prolongation de session
+    RequestExtension {
+        session_id: u64,
+        minutes: u64,
+    },
 }
 
 /// Messages reçus du serveur
@@ -98,6 +113,9 @@ pub enum ServerMessage {
     /// Code valide avec informations de session
     CodeValid {
         session: SessionInfo,
+        /// Indique si c'est une reconnexion à une session active
+        #[serde(default)]
+        is_reconnection: bool,
     },
     /// Code invalide
     CodeInvalid {
@@ -106,6 +124,9 @@ pub enum ServerMessage {
     /// Session démarrée
     SessionStarted {
         session: StartedSessionInfo,
+        /// Indique si c'est une reprise de session (reconnexion)
+        #[serde(default)]
+        reconnected: bool,
     },
     /// Mise à jour du temps
     TimeUpdate {
@@ -141,6 +162,36 @@ pub enum ServerMessage {
     Error {
         message: String,
     },
+    /// Commande à distance depuis l'admin
+    RemoteCommand {
+        command: RemoteCommandType,
+        #[serde(default)]
+        payload: Option<String>,
+    },
+    /// Réponse à une demande de prolongation
+    ExtensionResponse {
+        approved: bool,
+        #[serde(default)]
+        minutes: u64,
+        #[serde(default)]
+        new_remaining: Option<u64>,
+        #[serde(default)]
+        message: Option<String>,
+    },
+}
+
+/// Types de commandes à distance
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RemoteCommandType {
+    /// Verrouiller l'écran
+    Lock,
+    /// Afficher un message
+    Message,
+    /// Éteindre le poste
+    Shutdown,
+    /// Redémarrer le poste
+    Restart,
 }
 
 /// Niveau d'avertissement

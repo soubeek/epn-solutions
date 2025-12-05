@@ -149,10 +149,15 @@ class ClientConsumer(AsyncWebsocketConsumer):
     async def handle_validate_code(self, data):
         """Valide un code d'accès"""
         code = data.get('code')
+        mac_address = data.get('mac_address')
 
         if not code:
             await self.send_error("Code d'accès requis")
             return
+
+        # En mode dev sans auth, identifier le poste via MAC
+        if not self.poste and mac_address:
+            await self._identify_poste_by_mac(mac_address)
 
         # Valider le code
         session_data = await self._validate_session_code(code)
@@ -168,7 +173,8 @@ class ClientConsumer(AsyncWebsocketConsumer):
 
             await self.send(text_data=json.dumps({
                 'type': 'code_valid',
-                'session': session_data
+                'session': session_data,
+                'is_reconnection': session_data.get('is_reconnection', False)
             }))
         else:
             await self.send(text_data=json.dumps({
@@ -189,7 +195,8 @@ class ClientConsumer(AsyncWebsocketConsumer):
         if result['success']:
             await self.send(text_data=json.dumps({
                 'type': 'session_started',
-                'session': result['session']
+                'session': result['session'],
+                'reconnected': result.get('reconnected', False)
             }))
         else:
             await self.send_error(result['error'])
@@ -270,6 +277,40 @@ class ClientConsumer(AsyncWebsocketConsumer):
             'temps_restant': event.get('temps_restant')
         }))
 
+    async def remote_command(self, event):
+        """
+        Envoie une commande à distance au client.
+
+        Commandes supportées:
+        - lock: Verrouille l'écran
+        - message: Affiche un message (payload contient le texte)
+        - shutdown: Éteint le poste
+        - restart: Redémarre le poste
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'remote_command',
+            'command': event['command'],
+            'payload': event.get('payload')
+        }))
+
+    async def extension_response(self, event):
+        """
+        Envoie la réponse à une demande de prolongation au client.
+
+        Payload:
+        - approved: True/False
+        - minutes: Nombre de minutes accordées (si approved)
+        - new_remaining: Nouveau temps restant (si approved)
+        - message: Message de l'admin
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'extension_response',
+            'approved': event['approved'],
+            'minutes': event.get('minutes', 0),
+            'new_remaining': event.get('new_remaining'),
+            'message': event.get('message', '')
+        }))
+
     # Méthodes utilitaires
 
     async def send_error(self, message):
@@ -286,19 +327,55 @@ class ClientConsumer(AsyncWebsocketConsumer):
             self.poste.mettre_a_jour_connexion()
 
     @database_sync_to_async
+    def _identify_poste_by_mac(self, mac_address):
+        """
+        Identifie un poste par son adresse MAC.
+        UNIQUEMENT utilisé en mode développement sans TLS.
+        """
+        from django.conf import settings
+        if not settings.DEBUG:
+            return  # Sécurité: ne pas autoriser en production
+
+        from apps.postes.models import Poste
+        try:
+            mac_address = mac_address.upper()
+            poste = Poste.objects.get(mac_address=mac_address)
+            self.poste = poste
+            self.authenticated = True  # Marqué comme authentifié via MAC
+        except Poste.DoesNotExist:
+            pass  # Poste non trouvé, self.poste reste None
+
+    @database_sync_to_async
     def _validate_session_code(self, code):
-        """Valide un code d'accès"""
+        """
+        Valide un code d'accès.
+
+        Accepte les sessions en_attente (nouveau démarrage) et active (reconnexion).
+        Pour les sessions actives, la reconnexion n'est autorisée que sur le même poste.
+        """
         from apps.sessions.models import Session
 
         try:
             code = code.upper().strip()
             session = Session.objects.get(code_acces=code)
 
-            if session.statut != 'en_attente':
+            is_reconnection = False
+
+            # Vérifier le statut de la session
+            if session.statut == 'en_attente':
+                # Nouvelle session - OK
+                pass
+            elif session.statut == 'active':
+                # Reconnexion - uniquement autorisée sur le même poste
+                if not self.poste or session.poste_id != self.poste.id:
+                    return None  # Pas le bon poste
+                is_reconnection = True
+            else:
+                # Autres statuts (terminee, expiree, suspendue) - refusé
                 return None
 
-            # Vérifier que la session est pour ce poste (si authentifié)
-            if self.poste and session.poste_id != self.poste.id:
+            # Vérifier que la session est pour ce poste (si authentifié et nouvelle session)
+            if not is_reconnection and self.poste and session.poste_id != self.poste.id:
                 return None
 
             return {
@@ -308,24 +385,24 @@ class ClientConsumer(AsyncWebsocketConsumer):
                 'poste': session.poste.nom,
                 'duree_initiale': session.duree_initiale,
                 'temps_restant': session.temps_restant,
-                'statut': session.statut
+                'statut': session.statut,
+                'is_reconnection': is_reconnection
             }
         except Session.DoesNotExist:
             return None
 
     @database_sync_to_async
     def _start_session(self, session_id):
-        """Démarre une session"""
+        """
+        Démarre une session ou gère la reconnexion.
+
+        - Si statut en_attente : démarre la session normalement
+        - Si statut active : reconnexion (retourne l'état actuel sans modifier)
+        """
         from apps.sessions.models import Session
 
         try:
             session = Session.objects.get(id=session_id)
-
-            if session.statut != 'en_attente':
-                return {
-                    'success': False,
-                    'error': f"Session ne peut pas être démarrée (statut: {session.get_statut_display()})"
-                }
 
             # Vérifier que c'est le bon poste
             if self.poste and session.poste_id != self.poste.id:
@@ -334,16 +411,29 @@ class ClientConsumer(AsyncWebsocketConsumer):
                     'error': "Cette session n'est pas assignée à ce poste"
                 }
 
-            session.demarrer()
+            reconnected = False
+
+            if session.statut == 'en_attente':
+                # Nouveau démarrage
+                session.demarrer()
+            elif session.statut == 'active':
+                # Reconnexion - pas besoin de redémarrer
+                reconnected = True
+            else:
+                return {
+                    'success': False,
+                    'error': f"Session ne peut pas être démarrée (statut: {session.get_statut_display()})"
+                }
 
             return {
                 'success': True,
+                'reconnected': reconnected,
                 'session': {
                     'id': session.id,
                     'code_acces': session.code_acces,
                     'statut': session.statut,
                     'temps_restant': session.temps_restant,
-                    'debut_session': session.debut_session.isoformat()
+                    'debut_session': session.debut_session.isoformat() if session.debut_session else None
                 }
             }
         except Session.DoesNotExist:

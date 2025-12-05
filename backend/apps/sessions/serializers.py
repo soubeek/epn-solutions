@@ -4,7 +4,8 @@ Serializers pour l'app Sessions
 
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Session
+from .models import Session, ExtensionRequest
+from apps.postes.models import Poste
 
 
 class SessionSerializer(serializers.ModelSerializer):
@@ -19,6 +20,7 @@ class SessionSerializer(serializers.ModelSerializer):
     est_expiree = serializers.BooleanField(read_only=True)
     pourcentage_utilise = serializers.IntegerField(read_only=True)
     minutes_restantes = serializers.IntegerField(read_only=True)
+    is_guest_session = serializers.BooleanField(read_only=True)
 
     # Relations avec détails
     utilisateur_nom = serializers.CharField(
@@ -50,6 +52,7 @@ class SessionSerializer(serializers.ModelSerializer):
             'est_expiree',
             'pourcentage_utilise',
             'minutes_restantes',
+            'is_guest_session',
             'operateur',
             'notes',
             'created_at',
@@ -67,6 +70,7 @@ class SessionSerializer(serializers.ModelSerializer):
             'est_expiree',
             'pourcentage_utilise',
             'minutes_restantes',
+            'is_guest_session',
             'created_at',
             'updated_at'
         ]
@@ -126,6 +130,9 @@ class SessionListSerializer(serializers.ModelSerializer):
     utilisateur_nom = serializers.CharField(source='utilisateur.get_full_name', read_only=True)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     minutes_restantes = serializers.IntegerField(read_only=True)
+    temps_ecoule = serializers.IntegerField(read_only=True)
+    pourcentage_utilise = serializers.IntegerField(read_only=True)
+    is_guest = serializers.BooleanField(source='utilisateur.is_guest', read_only=True)
 
     class Meta:
         model = Session
@@ -135,7 +142,11 @@ class SessionListSerializer(serializers.ModelSerializer):
             'utilisateur_nom',
             'poste_nom',
             'statut',
+            'temps_restant',
+            'temps_ecoule',
             'minutes_restantes',
+            'pourcentage_utilise',
+            'is_guest',
             'debut_session',
             'created_at'
         ]
@@ -294,3 +305,194 @@ class SessionActiveSerializer(serializers.ModelSerializer):
         minutes = obj.temps_restant // 60
         secondes = obj.temps_restant % 60
         return f"{minutes:02d}:{secondes:02d}"
+
+
+class GuestSessionCreateSerializer(serializers.Serializer):
+    """
+    Serializer pour la création de sessions invité
+    Ne nécessite pas d'utilisateur existant - crée un guest automatiquement
+    """
+    poste = serializers.PrimaryKeyRelatedField(
+        queryset=Poste.objects.all(),
+        help_text="ID du poste"
+    )
+    duree_minutes = serializers.IntegerField(
+        min_value=1,
+        max_value=240,
+        help_text="Durée en minutes (1-240)"
+    )
+    notes = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Notes optionnelles"
+    )
+
+    def validate_poste(self, value):
+        """Vérifier que le poste est disponible"""
+        if not value.est_disponible:
+            if value.session_active:
+                raise serializers.ValidationError(
+                    f"Le poste {value.nom} est déjà occupé par la session {value.session_active.code_acces}"
+                )
+            else:
+                raise serializers.ValidationError(
+                    f"Le poste {value.nom} n'est pas disponible (statut: {value.get_statut_display()})"
+                )
+        return value
+
+    def create(self, validated_data):
+        """Création de la session invité avec utilisateur auto-généré"""
+        from apps.utilisateurs.models import Utilisateur
+        from apps.logs.models import Log
+
+        poste = validated_data['poste']
+        duree_minutes = validated_data['duree_minutes']
+        notes = validated_data.get('notes', '')
+        operateur = self.context['request'].user.username if self.context['request'].user.is_authenticated else 'anonymous'
+
+        # Créer l'utilisateur guest anonyme
+        guest_user = Utilisateur.create_guest(created_by=operateur)
+
+        # Créer la session
+        session = Session.objects.create(
+            utilisateur=guest_user,
+            poste=poste,
+            duree_initiale=duree_minutes * 60,
+            temps_restant=duree_minutes * 60,
+            operateur=operateur,
+            notes=f"[INVITÉ] {notes}".strip() if notes else "[INVITÉ]"
+        )
+
+        # Log la création de session invité
+        Log.log_action(
+            action='generation_code',
+            details=f"Session invité {session.code_acces} créée pour {guest_user.nom} sur {poste.nom}",
+            operateur=operateur,
+            session=session,
+            metadata={
+                'is_guest': True,
+                'guest_identifier': guest_user.nom,
+                'poste': poste.nom,
+                'duree_minutes': duree_minutes
+            }
+        )
+
+        return session
+
+
+# ==================== Serializers pour les demandes de prolongation ====================
+
+class ExtensionRequestSerializer(serializers.ModelSerializer):
+    """
+    Serializer pour les demandes de prolongation
+    """
+    session_code = serializers.CharField(source='session.code_acces', read_only=True)
+    utilisateur_nom = serializers.CharField(source='session.utilisateur.get_full_name', read_only=True)
+    poste_nom = serializers.CharField(source='session.poste.nom', read_only=True)
+    temps_restant = serializers.IntegerField(source='session.temps_restant', read_only=True)
+
+    class Meta:
+        model = ExtensionRequest
+        fields = [
+            'id',
+            'session',
+            'session_code',
+            'utilisateur_nom',
+            'poste_nom',
+            'temps_restant',
+            'minutes_requested',
+            'statut',
+            'responded_by',
+            'responded_at',
+            'response_message',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = [
+            'id',
+            'session',
+            'statut',
+            'responded_by',
+            'responded_at',
+            'response_message',
+            'created_at',
+            'updated_at'
+        ]
+
+
+class ExtensionRequestCreateSerializer(serializers.Serializer):
+    """
+    Serializer pour créer une demande de prolongation depuis le client
+    """
+    session_id = serializers.IntegerField(help_text="ID de la session")
+    minutes = serializers.IntegerField(
+        min_value=5,
+        max_value=60,
+        default=15,
+        help_text="Nombre de minutes demandées (5-60)"
+    )
+
+    def validate_session_id(self, value):
+        """Vérifier que la session existe et est active"""
+        try:
+            session = Session.objects.get(id=value)
+        except Session.DoesNotExist:
+            raise serializers.ValidationError("Session introuvable")
+
+        if session.statut not in ['active', 'suspendue']:
+            raise serializers.ValidationError(
+                f"La session n'est plus active (statut: {session.get_statut_display()})"
+            )
+
+        return value
+
+    def validate(self, attrs):
+        """Vérifier qu'il n'y a pas déjà une demande en attente"""
+        session_id = attrs['session_id']
+
+        # Vérifier s'il y a une demande en attente pour cette session
+        pending_request = ExtensionRequest.objects.filter(
+            session_id=session_id,
+            statut='pending'
+        ).exists()
+
+        if pending_request:
+            raise serializers.ValidationError(
+                "Une demande de prolongation est déjà en attente pour cette session"
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        """Créer la demande de prolongation"""
+        session = Session.objects.get(id=validated_data['session_id'])
+
+        extension_request = ExtensionRequest.objects.create(
+            session=session,
+            minutes_requested=validated_data['minutes']
+        )
+
+        # Log
+        from apps.logs.models import Log
+        Log.objects.create(
+            session=session,
+            action='extension_requested',
+            operateur='client',
+            details=f"Demande de prolongation de {validated_data['minutes']} min pour {session.code_acces}"
+        )
+
+        return extension_request
+
+
+class ExtensionRequestResponseSerializer(serializers.Serializer):
+    """
+    Serializer pour répondre à une demande de prolongation (admin)
+    """
+    approve = serializers.BooleanField(help_text="True pour approuver, False pour refuser")
+    message = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=255,
+        help_text="Message optionnel"
+    )

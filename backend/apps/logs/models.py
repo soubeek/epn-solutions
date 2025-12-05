@@ -32,6 +32,8 @@ class Log(models.Model):
         ('connexion_poste', 'Connexion poste client'),
         ('deconnexion_poste', 'Déconnexion poste client'),
         ('changement_statut_poste', 'Changement statut poste'),
+        ('client_discovered', 'Client découvert'),
+        ('client_validated', 'Client validé'),
 
         # Opérateurs
         ('connexion_operateur', 'Connexion opérateur'),

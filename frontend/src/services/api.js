@@ -136,6 +136,45 @@ export const postesService = {
   getSessionActive(id) {
     return api.get(`/postes/${id}/session_active/`)
   },
+  // ==================== Méthodes de découverte automatique ====================
+  /**
+   * Récupère les postes en attente de validation
+   */
+  getPendingValidation() {
+    return api.get('/postes/pending_validation/')
+  },
+  /**
+   * Valide un poste découvert
+   * @param {number} id - ID du poste
+   * @param {object} data - Données optionnelles (nom personnalisé)
+   */
+  validateDiscovery(id, data = {}) {
+    return api.post(`/postes/${id}/validate_discovery/`, data)
+  },
+  /**
+   * Génère un token d'enregistrement pour un poste validé
+   * @param {number} id - ID du poste
+   */
+  generateRegistrationToken(id) {
+    return api.post(`/postes/${id}/generate_registration_token/`)
+  },
+  /**
+   * Rejette/supprime un poste en attente de validation
+   * @param {number} id - ID du poste
+   */
+  rejectDiscovery(id) {
+    return api.delete(`/postes/${id}/`)
+  },
+  // ==================== Commandes à distance ====================
+  /**
+   * Envoie une commande à distance à un poste
+   * @param {number} id - ID du poste
+   * @param {string} command - Commande: 'lock', 'message', 'shutdown', 'restart'
+   * @param {string} payload - Payload optionnel (requis pour 'message')
+   */
+  remoteCommand(id, command, payload = null) {
+    return api.post(`/postes/${id}/remote_command/`, { command, payload })
+  },
 }
 
 export const sessionsService = {
@@ -147,6 +186,9 @@ export const sessionsService = {
   },
   create(data) {
     return api.post('/sessions/', data)
+  },
+  createGuest(data) {
+    return api.post('/sessions/create_guest/', data)
   },
   update(id, data) {
     return api.put(`/sessions/${id}/`, data)
@@ -180,6 +222,30 @@ export const sessionsService = {
   },
   getTimeRemaining(id) {
     return api.get(`/sessions/${id}/time_remaining/`)
+  },
+}
+
+export const extensionRequestsService = {
+  /**
+   * Récupère les demandes de prolongation en attente
+   */
+  getPending() {
+    return api.get('/sessions/pending_extensions/')
+  },
+  /**
+   * Récupère toutes les demandes de prolongation
+   */
+  getAll(params) {
+    return api.get('/extension-requests/', { params })
+  },
+  /**
+   * Répond à une demande de prolongation
+   * @param {number} id - ID de la demande
+   * @param {boolean} approve - Approuver ou refuser
+   * @param {string} message - Message optionnel
+   */
+  respond(id, approve, message = null) {
+    return api.post(`/extension-requests/${id}/respond/`, { approve, message })
   },
 }
 

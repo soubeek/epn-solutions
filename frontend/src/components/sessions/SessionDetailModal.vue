@@ -86,6 +86,12 @@
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                     Utilisateur
+                    <span
+                      v-if="session.is_guest_session"
+                      class="px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded-full"
+                    >
+                      Invité
+                    </span>
                   </h5>
                   <dl class="space-y-1">
                     <dd class="text-sm font-medium text-gray-900">
@@ -125,6 +131,10 @@
                     <div v-if="session.temps_ajoute > 0">
                       <dt class="text-xs text-gray-500">Temps ajouté</dt>
                       <dd class="text-sm text-green-600">+{{ formatMinutes(session.temps_ajoute) }}</dd>
+                    </div>
+                    <div v-if="session.temps_ecoule > 0">
+                      <dt class="text-xs text-gray-500">Temps écoulé</dt>
+                      <dd class="text-sm text-gray-900">{{ formatMinutes(session.temps_ecoule) }}</dd>
                     </div>
                   </dl>
                 </div>
@@ -178,7 +188,7 @@
             <div class="flex justify-between gap-3 p-4 border-t bg-gray-50">
               <div>
                 <button
-                  v-if="session?.statut === 'active'"
+                  v-if="canModifySession"
                   type="button"
                   class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
                   @click="$emit('terminate', session)"
@@ -188,7 +198,7 @@
               </div>
               <div class="flex gap-3">
                 <button
-                  v-if="session?.statut === 'active'"
+                  v-if="canModifySession"
                   type="button"
                   class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700"
                   @click="$emit('addTime', session)"
@@ -245,6 +255,10 @@ const statusLabel = computed(() => {
 
 const headerBgClass = computed(() => {
   return statusConfig[props.session?.statut]?.headerBg || 'bg-gray-50'
+})
+
+const canModifySession = computed(() => {
+  return ['active', 'en_attente', 'suspendue'].includes(props.session?.statut)
 })
 
 function close() {
