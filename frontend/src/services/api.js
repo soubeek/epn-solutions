@@ -175,6 +175,13 @@ export const postesService = {
   remoteCommand(id, command, payload = null) {
     return api.post(`/postes/${id}/remote_command/`, { command, payload })
   },
+  /**
+   * Déverrouille le mode kiosque sur un poste
+   * @param {number} id - ID du poste
+   */
+  unlockKiosk(id) {
+    return api.post(`/postes/${id}/unlock_kiosk/`)
+  },
 }
 
 export const sessionsService = {

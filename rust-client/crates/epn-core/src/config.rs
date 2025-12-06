@@ -150,6 +150,16 @@ pub struct Config {
     /// Chemin personnalisé vers GOG Galaxy
     #[serde(default)]
     pub gaming_gog_path: Option<String>,
+
+    // ==================== Configuration Mode Kiosque ====================
+
+    /// Activer le mode kiosque (plein écran, pas de fermeture possible)
+    #[serde(default = "default_true")]
+    pub kiosk_mode: bool,
+
+    /// Mot de passe admin pour déverrouiller le mode kiosque (Ctrl+Alt+Shift+K)
+    #[serde(default)]
+    pub kiosk_admin_password: Option<String>,
 }
 
 // Valeurs par défaut
@@ -205,6 +215,9 @@ impl Default for Config {
             gaming_steam_path: None,
             gaming_epic_path: None,
             gaming_gog_path: None,
+            // Kiosk
+            kiosk_mode: default_true(),
+            kiosk_admin_password: None,
         }
     }
 }
@@ -366,6 +379,14 @@ impl Config {
         let gaming_epic_path = env::var("EPN_GAMING_EPIC_PATH").ok();
         let gaming_gog_path = env::var("EPN_GAMING_GOG_PATH").ok();
 
+        // Kiosk
+        let kiosk_mode = env::var("EPN_KIOSK_MODE")
+            .ok()
+            .map(|s| s.to_lowercase() == "true")
+            .unwrap_or(true);
+
+        let kiosk_admin_password = env::var("EPN_KIOSK_ADMIN_PASSWORD").ok();
+
         Ok(Self {
             server_url,
             ws_url,
@@ -403,6 +424,9 @@ impl Config {
             gaming_steam_path,
             gaming_epic_path,
             gaming_gog_path,
+            // Kiosk
+            kiosk_mode,
+            kiosk_admin_password,
         })
     }
 

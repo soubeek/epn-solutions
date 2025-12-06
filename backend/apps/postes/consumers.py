@@ -311,6 +311,22 @@ class ClientConsumer(AsyncWebsocketConsumer):
             'message': event.get('message', '')
         }))
 
+    async def unlock_kiosk(self, event):
+        """
+        Déverrouille le mode kiosque sur le client.
+
+        Envoyé depuis l'interface admin pour permettre à un admin
+        de sortir le client du mode kiosque à distance.
+
+        Payload:
+        - admin: Nom de l'admin qui déverrouille
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'unlock_kiosk',
+            'admin': event.get('admin', 'Administrateur'),
+            'message': event.get('message', 'Mode kiosque désactivé par un administrateur')
+        }))
+
     # Méthodes utilitaires
 
     async def send_error(self, message):

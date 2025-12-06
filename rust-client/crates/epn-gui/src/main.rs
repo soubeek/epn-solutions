@@ -5,7 +5,7 @@ use epn_core::{Config, SessionInfo, SessionManager};
 use epn_system::{get_notifier, get_screen_locker, get_logout, Urgency};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::State;
 
 /// État partagé de l'application
 struct AppState {
@@ -118,6 +118,28 @@ fn get_config(state: State<'_, AppState>) -> Config {
     (*state.config).clone()
 }
 
+/// Vérifier le mot de passe admin pour déverrouiller le mode kiosque
+#[tauri::command]
+fn verify_admin_password(password: String, state: State<'_, AppState>) -> bool {
+    let config = &state.config;
+
+    match &config.kiosk_admin_password {
+        Some(admin_password) => {
+            let is_valid = password == *admin_password;
+            if is_valid {
+                tracing::info!("Mot de passe admin correct - déverrouillage du mode kiosque");
+            } else {
+                tracing::warn!("Tentative de déverrouillage avec mot de passe incorrect");
+            }
+            is_valid
+        }
+        None => {
+            tracing::warn!("Tentative de déverrouillage mais aucun mot de passe admin configuré");
+            false
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Initialiser le logging
@@ -166,6 +188,7 @@ async fn main() {
             logout_user,
             show_notification,
             get_config,
+            verify_admin_password,
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors du lancement de l'application Tauri");

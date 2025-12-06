@@ -1,5 +1,5 @@
-server_url: http://localhost:8001
-ws_url: ws://localhost:8001
+server_url: http://192.168.1.25:8001
+ws_url: ws://192.168.1.25:8001
 check_interval: 5
 warning_time: 300
 critical_time: 60
@@ -14,7 +14,7 @@ lock_delay_secs: 5
 debug: true
 log_level: debug
 # Configuration découverte automatique
-discovery_token: test-discovery-token-2024
+discovery_token: af8bd26ef09b5195b0382d35f232e9befdd3ca77f231772e34dc20956f986ce2
 discovery_poll_interval: 5
 discovery_max_wait: 300
 
@@ -67,3 +67,10 @@ gaming_steam_big_picture: false
 # gaming_steam_path: "C:\\Program Files (x86)\\Steam\\steam.exe"
 # gaming_epic_path: "C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win64\\EpicGamesLauncher.exe"
 # gaming_gog_path: "C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe"
+
+# ============== Configuration Mode Kiosque ==============
+# Activer le mode kiosque (plein écran, fermeture impossible)
+kiosk_mode: true
+# Mot de passe admin pour déverrouiller le kiosque (Ctrl+Alt+Shift+K)
+# Laisser vide pour désactiver le déverrouillage local
+kiosk_admin_password: "admin123"

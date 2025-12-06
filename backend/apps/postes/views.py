@@ -784,3 +784,60 @@ class PosteViewSet(viewsets.ModelViewSet):
             'command': command,
             'poste_id': poste.id
         })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unlock_kiosk(self, request, pk=None):
+        """
+        Déverrouille le mode kiosque d'un poste à distance.
+
+        POST /api/postes/{id}/unlock_kiosk/
+
+        Response:
+        {
+            "message": "Mode kiosque déverrouillé",
+            "poste_id": 123,
+            "admin": "username"
+        }
+        """
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        poste = self.get_object()
+        admin_username = request.user.username if request.user.is_authenticated else 'admin'
+
+        # Vérifier que le poste est en ligne
+        if not poste.est_en_ligne:
+            return Response(
+                {'error': f'Le poste {poste.nom} n\'est pas en ligne'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Envoyer la commande via WebSocket
+        channel_layer = get_channel_layer()
+        group_name = f'poste_{poste.id}'
+
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type': 'unlock_kiosk',
+                'admin': admin_username,
+                'message': f'Mode kiosque désactivé par {admin_username}'
+            }
+        )
+
+        # Log l'action
+        from apps.logs.models import Log
+        Log.log_action(
+            action='unlock_kiosk',
+            details=f"Mode kiosque déverrouillé sur {poste.nom} par {admin_username}",
+            operateur=admin_username,
+            metadata={
+                'poste_id': poste.id,
+            }
+        )
+
+        return Response({
+            'message': f'Mode kiosque déverrouillé sur {poste.nom}',
+            'poste_id': poste.id,
+            'admin': admin_username
+        })

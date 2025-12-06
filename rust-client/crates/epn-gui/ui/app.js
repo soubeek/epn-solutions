@@ -5,6 +5,8 @@
 let currentSession = null;
 let countdownInterval = null;
 let invoke = null;
+let kioskModeActive = false;
+let appConfig = null;
 
 // Initialisation au chargement
 document.addEventListener('DOMContentLoaded', async () => {
@@ -36,9 +38,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateConnectionStatus(true);
 
         // Charger la configuration
-        const config = await invoke('get_config');
+        appConfig = await invoke('get_config');
         document.getElementById('server-info').textContent =
-            `Serveur: ${config.server_url}`;
+            `Serveur: ${appConfig.server_url}`;
+
+        // Activer le mode kiosque si configuré
+        if (appConfig.kiosk_mode) {
+            await setupKioskMode();
+        }
     } catch (error) {
         console.error('Erreur d\'initialisation:', error);
         updateConnectionStatus(false);
@@ -281,6 +288,126 @@ function formatTime(seconds) {
         return `${minutes}m ${String(secs).padStart(2, '0')}s`;
     }
 }
+
+// ==================== MODE KIOSQUE ====================
+
+// Configurer le mode kiosque
+async function setupKioskMode() {
+    console.log('Activation du mode kiosque...');
+
+    try {
+        // Accéder à l'API Window de Tauri
+        const { getCurrentWindow } = window.__TAURI__.window;
+        const win = getCurrentWindow();
+
+        // Configurer la fenêtre
+        await win.setFullscreen(true);
+        await win.setDecorations(false);
+        await win.setAlwaysOnTop(true);
+        await win.setClosable(false);
+
+        // Bloquer la fermeture de la fenêtre
+        await win.onCloseRequested((event) => {
+            console.log('Tentative de fermeture bloquée (mode kiosque actif)');
+            event.preventDefault();
+        });
+
+        kioskModeActive = true;
+        console.log('Mode kiosque activé');
+    } catch (error) {
+        console.error('Erreur lors de l\'activation du mode kiosque:', error);
+    }
+}
+
+// Désactiver le mode kiosque
+async function exitKioskMode() {
+    console.log('Désactivation du mode kiosque...');
+
+    try {
+        const { getCurrentWindow } = window.__TAURI__.window;
+        const win = getCurrentWindow();
+
+        await win.setFullscreen(false);
+        await win.setDecorations(true);
+        await win.setAlwaysOnTop(false);
+        await win.setClosable(true);
+
+        kioskModeActive = false;
+        console.log('Mode kiosque désactivé');
+    } catch (error) {
+        console.error('Erreur lors de la désactivation du mode kiosque:', error);
+    }
+}
+
+// Demander le mot de passe admin pour déverrouiller
+async function promptAdminPassword() {
+    const password = prompt('Mot de passe administrateur:');
+    if (password) {
+        try {
+            const valid = await invoke('verify_admin_password', { password });
+            if (valid) {
+                await exitKioskMode();
+                alert('Mode kiosque désactivé');
+            } else {
+                alert('Mot de passe incorrect');
+            }
+        } catch (error) {
+            console.error('Erreur de vérification du mot de passe:', error);
+            alert('Erreur: ' + error);
+        }
+    }
+}
+
+// Déverrouillage à distance (appelé via WebSocket)
+async function handleRemoteUnlock(adminName) {
+    console.log('Déverrouillage à distance par:', adminName);
+    await exitKioskMode();
+    await invoke('show_notification', {
+        title: 'Mode kiosque désactivé',
+        message: `Déverrouillé par ${adminName}`,
+        urgency: 'normal'
+    }).catch(console.error);
+}
+
+// ==================== GESTION DES TOUCHES ====================
+
+// Bloquer les touches système en mode kiosque
+document.addEventListener('keydown', (e) => {
+    // Détecter Ctrl+Alt+Shift+K pour déverrouillage admin
+    if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'K' || e.key === 'k')) {
+        e.preventDefault();
+        if (kioskModeActive && appConfig && appConfig.kiosk_admin_password) {
+            promptAdminPassword();
+        }
+        return false;
+    }
+
+    // Bloquer les touches de sortie en mode kiosque
+    if (kioskModeActive) {
+        // Bloquer Alt+F4
+        if (e.altKey && e.key === 'F4') {
+            e.preventDefault();
+            return false;
+        }
+        // Bloquer Alt+Tab (ne fonctionne pas toujours au niveau navigateur)
+        if (e.altKey && e.key === 'Tab') {
+            e.preventDefault();
+            return false;
+        }
+        // Bloquer F11 (fullscreen toggle)
+        if (e.key === 'F11') {
+            e.preventDefault();
+            return false;
+        }
+        // Bloquer Escape
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            return false;
+        }
+    }
+});
+
+// ==================== GESTION DES ERREURS ====================
 
 // Gérer les erreurs globales
 window.addEventListener('error', (event) => {

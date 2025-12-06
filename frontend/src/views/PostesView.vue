@@ -490,6 +490,17 @@
               Verrouiller
             </button>
             <button
+              @click="unlockKiosk"
+              class="btn btn-secondary flex flex-col items-center py-4"
+              :disabled="sendingCommand"
+              title="Désactiver le mode kiosque sur ce poste"
+            >
+              <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+              </svg>
+              Déverrouiller
+            </button>
+            <button
               @click="openMessageInput"
               class="btn btn-secondary flex flex-col items-center py-4"
               :disabled="sendingCommand"
@@ -947,6 +958,28 @@ async function sendCommand(command) {
     }
   } catch (err) {
     commandError.value = err.response?.data?.error || err.response?.data?.detail || 'Erreur lors de l\'envoi de la commande'
+    toastError(commandError.value)
+    console.error(err)
+  } finally {
+    sendingCommand.value = false
+  }
+}
+
+async function unlockKiosk() {
+  if (!confirm(`Êtes-vous sûr de vouloir désactiver le mode kiosque sur "${commandPoste.value.nom}" ?\nCela permettra à l'utilisateur d'accéder au bureau.`)) {
+    return
+  }
+
+  sendingCommand.value = true
+  commandError.value = null
+  commandSuccess.value = null
+
+  try {
+    await postesService.unlockKiosk(commandPoste.value.id)
+    commandSuccess.value = 'Mode kiosque désactivé avec succès'
+    success(commandSuccess.value)
+  } catch (err) {
+    commandError.value = err.response?.data?.error || err.response?.data?.detail || 'Erreur lors du déverrouillage'
     toastError(commandError.value)
     console.error(err)
   } finally {
