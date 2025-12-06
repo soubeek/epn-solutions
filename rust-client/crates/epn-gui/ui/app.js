@@ -272,6 +272,15 @@ async function sessionExpired() {
         console.error('Erreur de notification:', error);
     }
 
+    // Terminer et nettoyer la session côté Rust
+    try {
+        console.log('Nettoyage de la session...');
+        await invoke('end_session');
+        console.log('Session nettoyée');
+    } catch (error) {
+        console.error('Erreur lors du nettoyage de la session:', error);
+    }
+
     // Retourner automatiquement au login après 5 secondes
     setTimeout(async () => {
         await returnToLogin();
@@ -294,24 +303,26 @@ async function returnToLogin() {
     // S'assurer que le mode kiosque/fullscreen est actif
     if (appConfig && appConfig.kiosk_mode) {
         try {
-            const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
+            const { getCurrentWindow, LogicalSize, LogicalPosition } = window.__TAURI__.window;
             const win = getCurrentWindow();
 
-            // Redimensionner à la taille du moniteur (important pour Wayland)
+            // 1. Remettre position et taille normale
             const monitor = await win.currentMonitor();
             if (monitor) {
+                await win.setPosition(new LogicalPosition(0, 0));
                 await win.setSize(new LogicalSize(monitor.size.width, monitor.size.height));
             }
 
-            // Attendre que le redimensionnement prenne effet
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Attendre que les changements prennent effet
+            await new Promise(resolve => setTimeout(resolve, 200));
 
-            // Configurer le mode kiosque
+            // 2. Configurer le mode kiosque
             await win.setDecorations(false);
             await win.setAlwaysOnTop(true);
 
-            // Maximiser puis fullscreen
+            // 3. Maximiser puis fullscreen
             await win.maximize();
+            await new Promise(resolve => setTimeout(resolve, 100));
             await ensureFullscreen(win);
         } catch (error) {
             console.error('Erreur lors de la réactivation du fullscreen:', error);
@@ -514,28 +525,34 @@ async function switchToFullscreenMode() {
     console.log('Retour en mode plein écran...');
 
     try {
-        const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
+        const { getCurrentWindow, LogicalSize, LogicalPosition } = window.__TAURI__.window;
         const win = getCurrentWindow();
 
         // Masquer le widget
         document.getElementById('widget-screen').classList.remove('active');
         document.body.classList.remove('widget-active');
 
-        // D'abord remettre une taille normale (important pour Wayland)
+        // 1. D'abord sortir du mode widget - remettre position et taille normale
         const monitor = await win.currentMonitor();
         if (monitor) {
+            // Position en haut à gauche
+            await win.setPosition(new LogicalPosition(0, 0));
+            // Taille du moniteur
             await win.setSize(new LogicalSize(monitor.size.width, monitor.size.height));
         }
 
-        // Attendre que le redimensionnement prenne effet
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Attendre que les changements prennent effet
+        await new Promise(resolve => setTimeout(resolve, 200));
 
-        // Configurer le mode kiosque
+        // 2. Configurer le mode kiosque
         await win.setDecorations(false);
         await win.setAlwaysOnTop(true);
 
-        // Maximiser puis fullscreen (plus fiable sur Wayland/GNOME)
+        // 3. Maximiser d'abord (important pour Wayland)
         await win.maximize();
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // 4. Puis forcer le plein écran avec retry
         await ensureFullscreen(win);
 
         widgetModeActive = false;
