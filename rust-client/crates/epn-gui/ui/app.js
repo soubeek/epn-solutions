@@ -335,11 +335,26 @@ async function setupKioskMode() {
         const { getCurrentWindow } = window.__TAURI__.window;
         const win = getCurrentWindow();
 
-        // Configurer la fenêtre
-        await win.setFullscreen(true);
+        // Attendre que la fenêtre soit prête (important pour Wayland/X11)
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Configurer la fenêtre - forcer le plein écran
         await win.setDecorations(false);
         await win.setAlwaysOnTop(true);
         await win.setClosable(false);
+
+        // Forcer le plein écran avec un petit délai
+        await win.setFullscreen(true);
+
+        // Double vérification après un délai
+        setTimeout(async () => {
+            try {
+                await win.setFullscreen(true);
+                console.log('Plein écran forcé (double vérification)');
+            } catch (e) {
+                console.error('Erreur double vérification fullscreen:', e);
+            }
+        }, 300);
 
         // Bloquer la fermeture de la fenêtre
         await win.onCloseRequested((event) => {
