@@ -502,16 +502,28 @@ async function switchToFullscreenMode() {
     console.log('Retour en mode plein écran...');
 
     try {
-        const { getCurrentWindow } = window.__TAURI__.window;
+        const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
         const win = getCurrentWindow();
 
         // Masquer le widget
         document.getElementById('widget-screen').classList.remove('active');
         document.body.classList.remove('widget-active');
 
-        // Repasser en plein écran avec retry pour fiabilité
+        // D'abord remettre une taille normale (important pour Wayland)
+        const monitor = await win.currentMonitor();
+        if (monitor) {
+            await win.setSize(new LogicalSize(monitor.size.width, monitor.size.height));
+        }
+
+        // Attendre que le redimensionnement prenne effet
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Configurer le mode kiosque
         await win.setDecorations(false);
         await win.setAlwaysOnTop(true);
+
+        // Maximiser puis fullscreen (plus fiable sur Wayland/GNOME)
+        await win.maximize();
         await ensureFullscreen(win);
 
         widgetModeActive = false;
