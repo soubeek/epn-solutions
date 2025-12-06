@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=EPN Client
+Comment=Client kiosque EPN
+Exec=/usr/local/bin/epn-client-loop.sh
+Terminal=false
+Hidden=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=2
