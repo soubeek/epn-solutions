@@ -159,8 +159,8 @@ class ClientConsumer(AsyncWebsocketConsumer):
         if not self.poste and mac_address:
             await self._identify_poste_by_mac(mac_address)
 
-        # Valider le code
-        session_data = await self._validate_session_code(code)
+        # Valider le code (passer mac_address pour reconnexion en mode dev)
+        session_data = await self._validate_session_code(code, mac_address)
 
         if session_data:
             # Rejoindre le groupe de la session
@@ -362,7 +362,7 @@ class ClientConsumer(AsyncWebsocketConsumer):
             pass  # Poste non trouvé, self.poste reste None
 
     @database_sync_to_async
-    def _validate_session_code(self, code):
+    def _validate_session_code(self, code, mac_address=None):
         """
         Valide un code d'accès.
 
@@ -370,6 +370,7 @@ class ClientConsumer(AsyncWebsocketConsumer):
         Pour les sessions actives, la reconnexion n'est autorisée que sur le même poste.
         """
         from apps.sessions.models import Session
+        from django.conf import settings
 
         try:
             code = code.upper().strip()
@@ -383,7 +384,19 @@ class ClientConsumer(AsyncWebsocketConsumer):
                 pass
             elif session.statut == 'active':
                 # Reconnexion - uniquement autorisée sur le même poste
-                if not self.poste or session.poste_id != self.poste.id:
+                poste_match = False
+
+                if self.poste and session.poste_id == self.poste.id:
+                    poste_match = True
+                elif settings.DEBUG and mac_address:
+                    # En mode dev, vérifier par MAC si poste non identifié
+                    mac_upper = mac_address.upper()
+                    if session.poste.mac_address and session.poste.mac_address.upper() == mac_upper:
+                        poste_match = True
+                        # Identifier le poste pour les futures requêtes
+                        self.poste = session.poste
+
+                if not poste_match:
                     return None  # Pas le bon poste
                 is_reconnection = True
             else:
