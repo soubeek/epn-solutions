@@ -336,25 +336,15 @@ async function setupKioskMode() {
         const win = getCurrentWindow();
 
         // Attendre que la fenêtre soit prête (important pour Wayland/X11)
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Configurer la fenêtre - forcer le plein écran
+        // Configurer la fenêtre
         await win.setDecorations(false);
         await win.setAlwaysOnTop(true);
         await win.setClosable(false);
 
-        // Forcer le plein écran avec un petit délai
-        await win.setFullscreen(true);
-
-        // Double vérification après un délai
-        setTimeout(async () => {
-            try {
-                await win.setFullscreen(true);
-                console.log('Plein écran forcé (double vérification)');
-            } catch (e) {
-                console.error('Erreur double vérification fullscreen:', e);
-            }
-        }, 300);
+        // Assurer le plein écran avec retry
+        await ensureFullscreen(win);
 
         // Bloquer la fermeture de la fenêtre
         await win.onCloseRequested((event) => {
@@ -367,6 +357,34 @@ async function setupKioskMode() {
     } catch (error) {
         console.error('Erreur lors de l\'activation du mode kiosque:', error);
     }
+}
+
+// Assurer le plein écran avec vérification et retry
+async function ensureFullscreen(win) {
+    const maxRetries = 5;
+    const retryDelay = 500;
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            // Vérifier si déjà en plein écran
+            const isFullscreen = await win.isFullscreen();
+            if (isFullscreen) {
+                console.log(`Plein écran confirmé (tentative ${i + 1})`);
+                return true;
+            }
+
+            console.log(`Tentative plein écran ${i + 1}/${maxRetries}...`);
+            await win.setFullscreen(true);
+
+            // Attendre avant de vérifier
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } catch (e) {
+            console.error(`Erreur tentative ${i + 1}:`, e);
+        }
+    }
+
+    console.warn('Impossible de confirmer le plein écran après toutes les tentatives');
+    return false;
 }
 
 // Désactiver le mode kiosque

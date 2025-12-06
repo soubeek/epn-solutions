@@ -5,7 +5,7 @@ use epn_core::{Config, SessionInfo, SessionManager};
 use epn_system::{get_notifier, get_screen_locker, get_logout, Urgency};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tauri::State;
+use tauri::{Manager, State};
 
 /// État partagé de l'application
 struct AppState {
@@ -176,9 +176,40 @@ async fn main() {
         config: Arc::new(config),
     };
 
+    // Récupérer kiosk_mode avant de déplacer app_state
+    let kiosk_mode = app_state.config.kiosk_mode;
+
     // Construire et lancer l'application Tauri
     tauri::Builder::default()
         .manage(app_state)
+        .setup(move |app| {
+            // Forcer le plein écran côté Rust (plus fiable que JavaScript)
+            if kiosk_mode {
+                if let Some(window) = app.get_webview_window("main") {
+                    tracing::info!("Configuration mode kiosque (Rust-side)...");
+
+                    // Forcer le plein écran
+                    if let Err(e) = window.set_fullscreen(true) {
+                        tracing::error!("Erreur set_fullscreen: {}", e);
+                    }
+
+                    // Désactiver les décorations
+                    if let Err(e) = window.set_decorations(false) {
+                        tracing::error!("Erreur set_decorations: {}", e);
+                    }
+
+                    // Toujours au premier plan
+                    if let Err(e) = window.set_always_on_top(true) {
+                        tracing::error!("Erreur set_always_on_top: {}", e);
+                    }
+
+                    tracing::info!("Mode kiosque configuré (Rust-side)");
+                } else {
+                    tracing::warn!("Fenêtre 'main' non trouvée pour le mode kiosque");
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             initialize,
             validate_code,
