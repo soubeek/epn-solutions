@@ -250,11 +250,6 @@ async function sessionExpired() {
         countdownInterval = null;
     }
 
-    // Revenir en mode plein écran si on était en widget
-    if (widgetModeActive) {
-        await switchToFullscreenMode();
-    }
-
     // Afficher l'écran d'expiration (masquer tous les autres écrans)
     document.getElementById('session-screen').classList.remove('active');
     document.getElementById('widget-screen').classList.remove('active');
@@ -265,7 +260,7 @@ async function sessionExpired() {
     try {
         await invoke('show_notification', {
             title: 'Session Expirée',
-            message: 'Votre temps est écoulé',
+            message: 'Votre temps est écoulé. L\'application va redémarrer.',
             urgency: 'critical'
         });
     } catch (error) {
@@ -281,10 +276,15 @@ async function sessionExpired() {
         console.error('Erreur lors du nettoyage de la session:', error);
     }
 
-    // Retourner automatiquement au login après 5 secondes
+    // Redémarrer l'application après 3 secondes (systemd la relancera)
     setTimeout(async () => {
-        await returnToLogin();
-    }, 5000);
+        console.log('Redémarrage de l\'application...');
+        try {
+            await invoke('restart_app');
+        } catch (error) {
+            console.error('Erreur lors du redémarrage:', error);
+        }
+    }, 3000);
 }
 
 // Retourner à l'écran de connexion

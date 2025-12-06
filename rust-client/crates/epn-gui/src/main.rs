@@ -155,6 +155,13 @@ fn verify_admin_password(password: String, state: State<'_, AppState>) -> bool {
     }
 }
 
+/// Redémarrer l'application (pour cycle session)
+#[tauri::command]
+fn restart_app(app_handle: tauri::AppHandle) {
+    tracing::info!("Redémarrage de l'application demandé...");
+    app_handle.exit(0);  // Code 0 = succès, systemd redémarrera l'app
+}
+
 #[tokio::main]
 async fn main() {
     // Initialiser le logging
@@ -246,6 +253,7 @@ async fn main() {
             show_notification,
             get_config,
             verify_admin_password,
+            restart_app,
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors du lancement de l'application Tauri");
