@@ -188,12 +188,7 @@ async fn main() {
                 if let Some(window) = app.get_webview_window("main") {
                     tracing::info!("Configuration mode kiosque (Rust-side)...");
 
-                    // Forcer le plein écran
-                    if let Err(e) = window.set_fullscreen(true) {
-                        tracing::error!("Erreur set_fullscreen: {}", e);
-                    }
-
-                    // Désactiver les décorations
+                    // Désactiver les décorations d'abord
                     if let Err(e) = window.set_decorations(false) {
                         tracing::error!("Erreur set_decorations: {}", e);
                     }
@@ -201,6 +196,21 @@ async fn main() {
                     // Toujours au premier plan
                     if let Err(e) = window.set_always_on_top(true) {
                         tracing::error!("Erreur set_always_on_top: {}", e);
+                    }
+
+                    // Maximiser d'abord (fonctionne mieux sur Wayland)
+                    if let Err(e) = window.maximize() {
+                        tracing::error!("Erreur maximize: {}", e);
+                    }
+
+                    // Puis forcer le plein écran
+                    if let Err(e) = window.set_fullscreen(true) {
+                        tracing::error!("Erreur set_fullscreen: {}", e);
+                    }
+
+                    // Focus sur la fenêtre
+                    if let Err(e) = window.set_focus() {
+                        tracing::error!("Erreur set_focus: {}", e);
                     }
 
                     tracing::info!("Mode kiosque configuré (Rust-side)");
