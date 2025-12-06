@@ -6,6 +6,7 @@ let currentSession = null;
 let countdownInterval = null;
 let invoke = null;
 let kioskModeActive = false;
+let widgetModeActive = false;
 let appConfig = null;
 
 // Initialisation au chargement
@@ -113,7 +114,7 @@ async function validateCode() {
 }
 
 // Afficher l'écran de session
-function showSessionScreen() {
+async function showSessionScreen() {
     document.getElementById('login-screen').classList.remove('active');
     document.getElementById('session-screen').classList.add('active');
 
@@ -127,6 +128,14 @@ function showSessionScreen() {
 
     // Initialiser le compteur
     updateCountdown(currentSession.remaining_time);
+
+    // En mode kiosque, basculer vers le widget après connexion
+    if (appConfig && appConfig.kiosk_mode) {
+        // Petit délai pour que l'utilisateur voie la confirmation
+        setTimeout(async () => {
+            await switchToWidgetMode();
+        }, 1500);
+    }
 }
 
 // Démarrer la surveillance de la session
@@ -154,25 +163,41 @@ function startSessionMonitoring() {
 function updateCountdown(remainingSeconds) {
     const minutes = Math.floor(remainingSeconds / 60);
     const seconds = remainingSeconds % 60;
+    const minsStr = String(minutes).padStart(2, '0');
+    const secsStr = String(seconds).padStart(2, '0');
 
-    document.getElementById('minutes').textContent =
-        String(minutes).padStart(2, '0');
-    document.getElementById('seconds').textContent =
-        String(seconds).padStart(2, '0');
+    // Timer principal (écran session)
+    document.getElementById('minutes').textContent = minsStr;
+    document.getElementById('seconds').textContent = secsStr;
+
+    // Timer widget
+    const widgetMins = document.getElementById('widget-minutes');
+    const widgetSecs = document.getElementById('widget-seconds');
+    if (widgetMins) widgetMins.textContent = minsStr;
+    if (widgetSecs) widgetSecs.textContent = secsStr;
 
     // Calculer le pourcentage
     const percentage = (remainingSeconds / currentSession.total_duration) * 100;
+
+    // Barre de progression principale
     const progressBar = document.getElementById('progress-bar');
     progressBar.style.width = `${percentage}%`;
 
+    // Barre de progression widget
+    const widgetProgressBar = document.getElementById('widget-progress-bar');
+    if (widgetProgressBar) widgetProgressBar.style.width = `${percentage}%`;
+
     const countdownDisplay = document.getElementById('countdown-display');
     const warningBox = document.getElementById('warning-message');
+    const widgetTimer = document.getElementById('widget-timer');
 
     // Avertissements
     if (remainingSeconds <= 60) {
         // Critique (1 minute)
         countdownDisplay.querySelector('.countdown-time').className = 'countdown-time critical';
         progressBar.className = 'progress-bar critical';
+        if (widgetTimer) widgetTimer.className = 'widget-timer critical';
+        if (widgetProgressBar) widgetProgressBar.className = 'warning';
         warningBox.style.display = 'flex';
         warningBox.className = 'warning-box critical';
         document.getElementById('warning-text').textContent =
@@ -191,6 +216,8 @@ function updateCountdown(remainingSeconds) {
         // Avertissement (5 minutes)
         countdownDisplay.querySelector('.countdown-time').className = 'countdown-time warning';
         progressBar.className = 'progress-bar warning';
+        if (widgetTimer) widgetTimer.className = 'widget-timer warning';
+        if (widgetProgressBar) widgetProgressBar.className = 'warning';
         warningBox.style.display = 'flex';
         warningBox.className = 'warning-box';
         document.getElementById('warning-text').textContent =
@@ -209,6 +236,8 @@ function updateCountdown(remainingSeconds) {
         // Normal
         countdownDisplay.querySelector('.countdown-time').className = 'countdown-time';
         progressBar.className = 'progress-bar';
+        if (widgetTimer) widgetTimer.className = 'widget-timer';
+        if (widgetProgressBar) widgetProgressBar.className = '';
         warningBox.style.display = 'none';
     }
 }
@@ -221,8 +250,14 @@ async function sessionExpired() {
         countdownInterval = null;
     }
 
+    // Revenir en mode plein écran si on était en widget
+    if (widgetModeActive) {
+        await switchToFullscreenMode();
+    }
+
     // Afficher l'écran d'expiration
     document.getElementById('session-screen').classList.remove('active');
+    document.getElementById('widget-screen').classList.remove('active');
     document.getElementById('expired-screen').classList.add('active');
 
     // Notification
@@ -367,6 +402,96 @@ async function handleRemoteUnlock(adminName) {
         message: `Déverrouillé par ${adminName}`,
         urgency: 'normal'
     }).catch(console.error);
+}
+
+// ==================== MODE WIDGET (SESSION ACTIVE) ====================
+
+// Basculer vers le mode widget (petite fenêtre flottante)
+async function switchToWidgetMode() {
+    console.log('Activation du mode widget...');
+
+    try {
+        const { getCurrentWindow, LogicalSize, LogicalPosition } = window.__TAURI__.window;
+        const win = getCurrentWindow();
+
+        // Sortir du plein écran
+        await win.setFullscreen(false);
+
+        // Attendre un peu pour que le changement de mode prenne effet
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Définir la taille du widget
+        await win.setSize(new LogicalSize(320, 80));
+
+        // Positionner en bas à droite
+        const monitor = await win.currentMonitor();
+        if (monitor) {
+            const x = monitor.size.width - 340;
+            const y = monitor.size.height - 120;
+            await win.setPosition(new LogicalPosition(x, y));
+        }
+
+        // Garder au premier plan
+        await win.setAlwaysOnTop(true);
+
+        // Permettre le déplacement
+        await win.setDecorations(false);
+
+        // Afficher le widget au lieu de l'écran session
+        document.getElementById('session-screen').classList.remove('active');
+        document.getElementById('widget-screen').classList.add('active');
+        document.body.classList.add('widget-active');
+
+        // Configurer le drag
+        setupWidgetDrag();
+
+        widgetModeActive = true;
+        console.log('Mode widget activé');
+    } catch (error) {
+        console.error('Erreur lors de l\'activation du mode widget:', error);
+    }
+}
+
+// Revenir en mode plein écran
+async function switchToFullscreenMode() {
+    console.log('Retour en mode plein écran...');
+
+    try {
+        const { getCurrentWindow } = window.__TAURI__.window;
+        const win = getCurrentWindow();
+
+        // Masquer le widget
+        document.getElementById('widget-screen').classList.remove('active');
+        document.body.classList.remove('widget-active');
+
+        // Repasser en plein écran
+        await win.setFullscreen(true);
+        await win.setDecorations(false);
+        await win.setAlwaysOnTop(true);
+
+        widgetModeActive = false;
+        console.log('Mode plein écran activé');
+    } catch (error) {
+        console.error('Erreur lors du retour en mode plein écran:', error);
+    }
+}
+
+// Configurer le déplacement du widget par drag
+function setupWidgetDrag() {
+    const widget = document.getElementById('widget-screen');
+
+    widget.addEventListener('mousedown', async (e) => {
+        // Ne pas drag si on clique sur un bouton
+        if (e.target.tagName === 'BUTTON') return;
+
+        try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const win = getCurrentWindow();
+            await win.startDragging();
+        } catch (error) {
+            console.error('Erreur de drag:', error);
+        }
+    });
 }
 
 // ==================== GESTION DES TOUCHES ====================
