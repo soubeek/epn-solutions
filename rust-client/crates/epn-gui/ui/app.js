@@ -272,13 +272,9 @@ async function sessionExpired() {
         console.error('Erreur de notification:', error);
     }
 
-    // Verrouiller l'écran après 5 secondes
+    // Retourner automatiquement au login après 5 secondes
     setTimeout(async () => {
-        try {
-            await invoke('lock_screen');
-        } catch (error) {
-            console.error('Erreur de verrouillage:', error);
-        }
+        await returnToLogin();
     }, 5000);
 }
 
@@ -298,8 +294,24 @@ async function returnToLogin() {
     // S'assurer que le mode kiosque/fullscreen est actif
     if (appConfig && appConfig.kiosk_mode) {
         try {
-            const { getCurrentWindow } = window.__TAURI__.window;
+            const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
             const win = getCurrentWindow();
+
+            // Redimensionner à la taille du moniteur (important pour Wayland)
+            const monitor = await win.currentMonitor();
+            if (monitor) {
+                await win.setSize(new LogicalSize(monitor.size.width, monitor.size.height));
+            }
+
+            // Attendre que le redimensionnement prenne effet
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Configurer le mode kiosque
+            await win.setDecorations(false);
+            await win.setAlwaysOnTop(true);
+
+            // Maximiser puis fullscreen
+            await win.maximize();
             await ensureFullscreen(win);
         } catch (error) {
             console.error('Erreur lors de la réactivation du fullscreen:', error);
