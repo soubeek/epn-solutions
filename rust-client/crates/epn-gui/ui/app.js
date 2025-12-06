@@ -255,9 +255,10 @@ async function sessionExpired() {
         await switchToFullscreenMode();
     }
 
-    // Afficher l'écran d'expiration
+    // Afficher l'écran d'expiration (masquer tous les autres écrans)
     document.getElementById('session-screen').classList.remove('active');
     document.getElementById('widget-screen').classList.remove('active');
+    document.getElementById('login-screen').classList.remove('active');
     document.getElementById('expired-screen').classList.add('active');
 
     // Notification
@@ -282,7 +283,7 @@ async function sessionExpired() {
 }
 
 // Retourner à l'écran de connexion
-function returnToLogin() {
+async function returnToLogin() {
     currentSession = null;
 
     document.getElementById('expired-screen').classList.remove('active');
@@ -293,6 +294,17 @@ function returnToLogin() {
     document.getElementById('validate-btn').disabled = false;
     document.getElementById('validate-btn').textContent = 'Valider';
     hideError();
+
+    // S'assurer que le mode kiosque/fullscreen est actif
+    if (appConfig && appConfig.kiosk_mode) {
+        try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const win = getCurrentWindow();
+            await ensureFullscreen(win);
+        } catch (error) {
+            console.error('Erreur lors de la réactivation du fullscreen:', error);
+        }
+    }
 
     // Focus sur le champ de saisie
     document.getElementById('code-input').focus();
@@ -497,10 +509,10 @@ async function switchToFullscreenMode() {
         document.getElementById('widget-screen').classList.remove('active');
         document.body.classList.remove('widget-active');
 
-        // Repasser en plein écran
-        await win.setFullscreen(true);
+        // Repasser en plein écran avec retry pour fiabilité
         await win.setDecorations(false);
         await win.setAlwaysOnTop(true);
+        await ensureFullscreen(win);
 
         widgetModeActive = false;
         console.log('Mode plein écran activé');
