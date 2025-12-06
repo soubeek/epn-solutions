@@ -80,15 +80,15 @@ async fn get_remaining_time(state: State<'_, AppState>) -> Result<u64, String> {
     }
 }
 
-/// Terminer la session et nettoyer
+/// Terminer la session et nettoyer (sans verrouiller l'écran)
 #[tauri::command]
 async fn end_session(state: State<'_, AppState>) -> Result<(), String> {
-    tracing::info!("Fin de session demandée");
+    tracing::info!("Fin de session demandée (nettoyage uniquement)");
 
     let manager_guard = state.session_manager.lock().await;
     match manager_guard.as_ref() {
         Some(manager) => {
-            manager.handle_session_end("Session expirée").await;
+            manager.cleanup_only();
             Ok(())
         }
         None => Err("Session manager non initialisé".to_string()),

@@ -622,4 +622,60 @@ impl SessionManager {
             }
         }
     }
+
+    /// Nettoyage uniquement (sans verrouillage ni déconnexion)
+    /// Utilisé par le client GUI quand la session expire
+    pub fn cleanup_only(&self) {
+        tracing::info!("=== Nettoyage de session (sans verrouillage) ===");
+
+        // 1. Arrêter les launchers gaming et fermer les jeux
+        if let Some(ref gaming) = self.gaming_manager {
+            tracing::info!("Arrêt des launchers gaming et des jeux...");
+            gaming.end_session_launchers();
+            gaming.logout_all_launchers();
+        }
+
+        // 2. Nettoyage automatique (si activé)
+        if self.config.enable_cleanup {
+            tracing::info!("Exécution du nettoyage automatique...");
+            let cleanup_config = self.config.cleanup_config();
+            let cleanup_manager = CleanupManager::new(cleanup_config);
+            let result = cleanup_manager.run_cleanup();
+
+            tracing::info!(
+                "Nettoyage terminé: {} fichiers, {} dossiers supprimés, {} octets libérés",
+                result.files_deleted,
+                result.dirs_deleted,
+                result.bytes_freed
+            );
+
+            if !result.errors.is_empty() {
+                tracing::warn!("Erreurs de nettoyage: {:?}", result.errors);
+            }
+        }
+
+        // 3. Exécuter les scripts de nettoyage personnalisés
+        for script in &self.config.cleanup_scripts {
+            tracing::info!("Exécution du script de nettoyage: {}", script);
+            match Command::new("sh")
+                .arg("-c")
+                .arg(script)
+                .output()
+            {
+                Ok(output) => {
+                    if output.status.success() {
+                        tracing::info!("Script {} exécuté avec succès", script);
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        tracing::warn!("Script {} a échoué: {}", script, stderr);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Impossible d'exécuter le script {}: {}", script, e);
+                }
+            }
+        }
+
+        tracing::info!("Nettoyage terminé");
+    }
 }
