@@ -1,0 +1,32 @@
+[package]
+name = "epn-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Service Windows pour le client EPN"
+
+# Ce crate ne compile que sur Windows
+[[bin]]
+name = "epn-service"
+path = "src/main.rs"
+
+[dependencies]
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+
+# Windows Service (uniquement sur Windows)
+[target.'cfg(windows)'.dependencies]
+windows-service = { workspace = true }
+windows = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+# Sur Unix, ce crate est un placeholder qui affiche un message

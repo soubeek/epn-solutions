@@ -156,10 +156,23 @@ fn verify_admin_password(password: String, state: State<'_, AppState>) -> bool {
 }
 
 /// Redémarrer l'application (pour cycle session)
+///
+/// L'application se ferme proprement et sera relancée par:
+/// - Linux: autostart GNOME (epn-client-loop.sh) ou systemd
+/// - Windows: service EPNClient (epn-service.exe)
 #[tauri::command]
 fn restart_app(app_handle: tauri::AppHandle) {
     tracing::info!("Redémarrage de l'application demandé...");
-    app_handle.exit(0);  // Code 0 = succès, systemd redémarrera l'app
+
+    #[cfg(target_os = "linux")]
+    tracing::info!("L'autostart GNOME ou systemd relancera l'application");
+
+    #[cfg(target_os = "windows")]
+    tracing::info!("Le service Windows EPNClient relancera l'application");
+
+    // Exit avec code 0 = succès
+    // Le superviseur (service Windows ou loop Linux) relancera l'app
+    app_handle.exit(0);
 }
 
 #[tokio::main]

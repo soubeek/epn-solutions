@@ -6,6 +6,7 @@ members = [
     "crates/epn-core",
     "crates/epn-system",
     "crates/epn-gui",
+    "crates/epn-service",
 ]
 resolver = "2"
 
@@ -73,6 +74,7 @@ windows = { version = "0.52", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
 ] }
+windows-service = "0.7"
 
 [profile.release]
 opt-level = "z"         # Optimize for size

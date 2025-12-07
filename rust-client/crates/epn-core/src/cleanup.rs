@@ -217,22 +217,49 @@ impl CleanupManager {
 
         #[cfg(target_os = "windows")]
         {
-            if let Some(appdata) = dirs::data_local_dir() {
-                let firefox_dir = appdata.join("Mozilla/Firefox/Profiles");
-                if firefox_dir.exists() {
-                    if let Ok(entries) = fs::read_dir(&firefox_dir) {
-                        for entry in entries.flatten() {
-                            let path = entry.path();
-                            if path.is_dir() {
-                                self.clean_directory(&path.join("cache2"), result);
-                                self.delete_file(&path.join("cookies.sqlite"), result);
-                                self.delete_file(&path.join("places.sqlite"), result);
-                                self.clean_directory(&path.join("sessionstore-backups"), result);
-                                self.delete_file(&path.join("formhistory.sqlite"), result);
-                            }
-                        }
-                    }
+            // 1. Tuer Firefox
+            info!("Arrêt de Firefox...");
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/IM", "firefox.exe"])
+                .output();
+
+            // Attendre que Firefox se ferme
+            std::thread::sleep(std::time::Duration::from_millis(500));
+
+            // Chemins Firefox Windows
+            let appdata = std::env::var("APPDATA").unwrap_or_default();
+            let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+
+            let firefox_profile_dir = PathBuf::from(&appdata).join("Mozilla/Firefox");
+            let firefox_cache_dir = PathBuf::from(&localappdata).join("Mozilla/Firefox");
+            let template_dir = PathBuf::from("C:/ProgramData/EPNClient/firefox-template");
+
+            // 2. Supprimer le profil Firefox complet
+            if firefox_profile_dir.exists() {
+                info!("Suppression du profil Firefox...");
+                self.clean_directory(&firefox_profile_dir, result);
+            }
+
+            // 3. Supprimer le cache Firefox
+            if firefox_cache_dir.exists() {
+                info!("Suppression du cache Firefox...");
+                self.clean_directory(&firefox_cache_dir, result);
+            }
+
+            // 4. Restaurer le template si existe
+            if template_dir.exists() {
+                info!("Restauration du profil Firefox template...");
+                if let Err(e) = fs::create_dir_all(&firefox_profile_dir) {
+                    warn!("Impossible de créer {:?}: {}", firefox_profile_dir, e);
+                    result.add_error(format!("Création {:?}: {}", firefox_profile_dir, e));
+                } else if let Err(e) = self.copy_dir_recursive(&template_dir, &firefox_profile_dir) {
+                    warn!("Impossible de restaurer le template Firefox: {}", e);
+                    result.add_error(format!("Restauration template Firefox: {}", e));
+                } else {
+                    info!("Profil Firefox restauré depuis le template");
                 }
+            } else {
+                debug!("Pas de template Firefox trouvé dans {:?}", template_dir);
             }
         }
     }
