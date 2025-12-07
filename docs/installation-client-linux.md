@@ -269,6 +269,65 @@ sudo systemctl restart epn-client
 sudo -u epn DISPLAY=:0 RUST_LOG=debug /opt/epn-client/epn-gui
 ```
 
+## Configuration du template Firefox
+
+Le nettoyage Firefox supprime entièrement le profil et le restaure depuis un template. Cela garantit un environnement propre à chaque session.
+
+### Créer le template Firefox
+
+1. **Configurer Firefox** (en tant qu'utilisateur epn) :
+   - Lancer Firefox
+   - Installer les extensions nécessaires
+   - Configurer la page d'accueil
+   - Ajuster les paramètres
+   - Fermer Firefox
+
+2. **Sauvegarder le template** :
+```bash
+# Depuis le dossier rust-client
+sudo ./scripts/save-firefox-template.sh epn
+```
+
+Le template est sauvegardé dans `/usr/share/epn/firefox-template/`.
+
+### Mise à jour du template
+
+Pour mettre à jour le template après des modifications :
+```bash
+sudo ./scripts/save-firefox-template.sh epn
+```
+
+## Autostart GNOME (alternative à systemd)
+
+Si les services systemd utilisateur ne fonctionnent pas (erreur "Failed to connect to bus"), utilisez l'autostart GNOME :
+
+### Installation
+
+```bash
+# Build release
+cargo build --release
+
+# Installer (depuis le dossier rust-client)
+sudo ./autostart/install-autostart.sh epn
+```
+
+### Fonctionnement
+
+- Le script `epn-client-loop.sh` relance l'application en boucle
+- À la fin de session, l'app se ferme et redémarre automatiquement
+- Le fichier `.desktop` lance le script au login de l'utilisateur
+
+### Fichiers installés
+
+```
+/usr/local/bin/
+├── epn-gui                    # Binaire principal
+└── epn-client-loop.sh         # Script de boucle
+
+/home/epn/.config/autostart/
+└── epn-client.desktop         # Fichier autostart GNOME
+```
+
 ## Configuration Gaming (optionnel)
 
 Pour un poste gaming, modifier `/etc/epn-client/config.yaml` :

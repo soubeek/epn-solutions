@@ -166,37 +166,52 @@ impl CleanupManager {
         result
     }
 
-    /// Nettoyer Firefox
+    /// Nettoyer Firefox (suppression complète + restauration template)
     fn clean_firefox(&self, result: &mut CleanupResult) {
         info!("Nettoyage Firefox...");
 
         #[cfg(target_os = "linux")]
         {
+            // 1. Tuer Firefox
+            info!("Arrêt de Firefox...");
+            let _ = std::process::Command::new("pkill")
+                .arg("-9")
+                .arg("firefox")
+                .output();
+
+            // Attendre que Firefox se ferme
+            std::thread::sleep(std::time::Duration::from_millis(500));
+
             let firefox_dir = self.home_dir.join(".mozilla/firefox");
+            let cache_dir = self.home_dir.join(".cache/mozilla/firefox");
+            let template_dir = PathBuf::from("/usr/share/epn/firefox-template");
+
+            // 2. Supprimer le profil actuel complet
             if firefox_dir.exists() {
-                // Parcourir les profils Firefox
-                if let Ok(entries) = fs::read_dir(&firefox_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_dir() && path.to_string_lossy().contains(".default") {
-                            // Cache
-                            self.clean_directory(&path.join("cache2"), result);
-                            // Cookies
-                            self.delete_file(&path.join("cookies.sqlite"), result);
-                            self.delete_file(&path.join("cookies.sqlite-journal"), result);
-                            // Historique
-                            self.delete_file(&path.join("places.sqlite"), result);
-                            self.delete_file(&path.join("places.sqlite-journal"), result);
-                            // Sessions
-                            self.clean_directory(&path.join("sessionstore-backups"), result);
-                            self.delete_file(&path.join("sessionstore.jsonlz4"), result);
-                            // Formulaires
-                            self.delete_file(&path.join("formhistory.sqlite"), result);
-                            // Téléchargements
-                            self.delete_file(&path.join("downloads.sqlite"), result);
-                        }
-                    }
+                info!("Suppression du profil Firefox...");
+                self.clean_directory(&firefox_dir, result);
+            }
+
+            // 3. Supprimer le cache Firefox
+            if cache_dir.exists() {
+                info!("Suppression du cache Firefox...");
+                self.clean_directory(&cache_dir, result);
+            }
+
+            // 4. Restaurer le template si existe
+            if template_dir.exists() {
+                info!("Restauration du profil Firefox template...");
+                if let Err(e) = fs::create_dir_all(&firefox_dir) {
+                    warn!("Impossible de créer {:?}: {}", firefox_dir, e);
+                    result.add_error(format!("Création {:?}: {}", firefox_dir, e));
+                } else if let Err(e) = self.copy_dir_recursive(&template_dir, &firefox_dir) {
+                    warn!("Impossible de restaurer le template Firefox: {}", e);
+                    result.add_error(format!("Restauration template Firefox: {}", e));
+                } else {
+                    info!("Profil Firefox restauré depuis le template");
                 }
+            } else {
+                debug!("Pas de template Firefox trouvé dans {:?}", template_dir);
             }
         }
 
@@ -220,6 +235,27 @@ impl CleanupManager {
                 }
             }
         }
+    }
+
+    /// Copier récursivement un dossier
+    fn copy_dir_recursive(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+        if !dst.exists() {
+            fs::create_dir_all(dst)?;
+        }
+
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+
+            if src_path.is_dir() {
+                self.copy_dir_recursive(&src_path, &dst_path)?;
+            } else {
+                fs::copy(&src_path, &dst_path)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Nettoyer LibreOffice
