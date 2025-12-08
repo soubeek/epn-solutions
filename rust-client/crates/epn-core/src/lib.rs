@@ -14,6 +14,7 @@ pub mod cleanup;
 pub mod config;
 pub mod gaming;
 pub mod inactivity;
+pub mod lockdown;
 pub mod registration;
 pub mod session;
 pub mod types;
@@ -32,3 +33,7 @@ pub use types::{
     SessionStatus, WarningLevel,
 };
 pub use websocket::{TlsConfig, WsClient};
+pub use lockdown::{
+    LockdownConfig, LockdownProfile, ProfileType, SystemLockdown,
+    AppWhitelist, AppRestriction, create_lockdown,
+};

@@ -439,3 +439,120 @@ kiosk_mode: false
 ```
 
 L'application se lancera alors comme une fenêtre normale.
+
+## Verrouillage Système (System Lockdown)
+
+Le verrouillage système permet de restreindre l'accès au système d'exploitation au-delà du mode kiosque de l'application. Cela inclut:
+
+- Désactivation des raccourcis système (Super, Alt+F2)
+- Désactivation du terminal et gestionnaire de fichiers
+- Blocage des périphériques USB de stockage
+- Restriction des applications autorisées
+
+### Script de configuration automatique
+
+```bash
+# Depuis le dossier rust-client
+sudo ./scripts/configure-lockdown.sh --apply --user epn --profile standard
+```
+
+### Profils disponibles
+
+| Profil | Description | Applications autorisées |
+|--------|-------------|------------------------|
+| `strict` | Navigation uniquement | Firefox |
+| `standard` | Navigation + bureautique | Firefox, LibreOffice |
+| `permissive` | Multimédia | Firefox, LibreOffice, VLC, GIMP |
+| `gaming` | Jeux vidéo | Firefox, Steam, Heroic, Lutris |
+
+### Options du script
+
+```bash
+# Afficher l'aide
+sudo ./scripts/configure-lockdown.sh --help
+
+# Appliquer le profil strict
+sudo ./scripts/configure-lockdown.sh --apply --user epn --profile strict
+
+# Voir le statut actuel
+sudo ./scripts/configure-lockdown.sh --status
+
+# Retirer toutes les restrictions
+sudo ./scripts/configure-lockdown.sh --remove
+```
+
+### Restrictions appliquées (profil standard)
+
+| Restriction | Description |
+|-------------|-------------|
+| Terminal désactivé | `dconf: disable-command-line` |
+| Changement utilisateur désactivé | `dconf: disable-user-switching` |
+| Déconnexion désactivée | `dconf: disable-log-out` |
+| Touche Super désactivée | `dconf: overlay-key` |
+| Hot corners désactivés | `dconf: enable-hot-corners` |
+| Notifications masquées | `dconf: show-banners` |
+| USB storage bloqué | Règle udev |
+
+### Configuration manuelle
+
+Si vous préférez configurer manuellement les restrictions :
+
+```bash
+# En tant qu'utilisateur epn
+DBUS_LAUNCH="dbus-launch --exit-with-session"
+
+# Désactiver le terminal
+sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/lockdown/disable-command-line true
+
+# Désactiver le changement d'utilisateur
+sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/lockdown/disable-user-switching true
+
+# Désactiver la déconnexion
+sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/lockdown/disable-log-out true
+
+# Désactiver la touche Super
+sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/mutter/overlay-key "''"
+
+# Désactiver Alt+F2
+sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/wm/keybindings/panel-run-dialog "['']"
+```
+
+### Blocage USB (optionnel)
+
+Pour bloquer les périphériques USB de stockage :
+
+```bash
+# Créer la règle udev
+cat | sudo tee /etc/udev/rules.d/99-epn-block-usb-storage.rules << EOF
+ACTION=="add", SUBSYSTEMS=="usb", DRIVERS=="usb-storage", ATTR{authorized}="0"
+EOF
+
+# Recharger les règles
+sudo udevadm control --reload-rules
+```
+
+Pour autoriser à nouveau le stockage USB :
+
+```bash
+sudo rm /etc/udev/rules.d/99-epn-block-usb-storage.rules
+sudo udevadm control --reload-rules
+```
+
+### Retrait des restrictions
+
+Pour retirer toutes les restrictions et restaurer le comportement normal :
+
+```bash
+sudo ./scripts/configure-lockdown.sh --remove
+```
+
+Ou manuellement :
+
+```bash
+# Reset toutes les clés dconf
+sudo -u epn dbus-launch dconf reset /org/gnome/desktop/lockdown/disable-command-line
+sudo -u epn dbus-launch dconf reset /org/gnome/desktop/lockdown/disable-user-switching
+sudo -u epn dbus-launch dconf reset /org/gnome/desktop/lockdown/disable-log-out
+sudo -u epn dbus-launch dconf reset /org/gnome/mutter/overlay-key
+sudo -u epn dbus-launch dconf reset /org/gnome/desktop/wm/keybindings/panel-run-dialog
+```

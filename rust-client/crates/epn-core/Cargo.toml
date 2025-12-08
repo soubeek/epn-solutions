@@ -48,5 +48,13 @@ serde_yaml = { workspace = true }
 # System actions (screen lock, logout, notifications)
 epn-system = { path = "../epn-system" }
 
+# Platform-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.27", features = ["user"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.52"
+windows-sys = { version = "0.52", features = ["Win32_Security"] }
+
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

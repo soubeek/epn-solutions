@@ -908,6 +908,7 @@ dependencies = [
  "hostname",
  "local-ip-address",
  "mac_address",
+ "nix 0.27.1",
  "reqwest 0.11.27",
  "rustls 0.22.4",
  "rustls-pemfile 2.2.0",
@@ -923,6 +924,8 @@ dependencies = [
  "url",
  "uuid",
  "webpki-roots 0.26.11",
+ "windows-sys 0.52.0",
+ "winreg 0.52.0",
 ]
 
 [[package]]
@@ -2304,6 +2307,17 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags 2.10.0",
+ "cfg-if",
+ "libc",
+]
 
 [[package]]
 name = "nix"
@@ -5751,6 +5765,16 @@ name = "winreg"
 version = "0.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "winreg"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a277a57398d4bfa075df44f501a17cfdf8542d224f0d36095a2adc7aee4ef0a5"
 dependencies = [
  "cfg-if",
  "windows-sys 0.48.0",
