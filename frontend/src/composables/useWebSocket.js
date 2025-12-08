@@ -3,6 +3,9 @@
  */
 
 import { ref, onUnmounted } from 'vue'
+import { logger as baseLogger } from '@/utils/logger'
+
+const logger = baseLogger.withPrefix('WS')
 
 /**
  * Construit l'URL WebSocket complète
@@ -54,19 +57,19 @@ export function useWebSocket(url) {
       ws.value = new WebSocket(wsUrl)
 
       ws.value.onopen = () => {
-        console.log(`WebSocket connected: ${url}`)
+        logger.log(`Connected: ${url}`)
         isConnected.value = true
         error.value = null
         reconnectAttempts.value = 0
       }
 
       ws.value.onclose = (event) => {
-        console.log(`WebSocket closed: ${url}`, event)
+        logger.log(`Closed: ${url}`, event.code)
         isConnected.value = false
 
         // Tentative de reconnexion automatique
         if (reconnectAttempts.value < maxReconnectAttempts) {
-          console.log(`Reconnection attempt ${reconnectAttempts.value + 1}/${maxReconnectAttempts}`)
+          logger.log(`Reconnecting ${reconnectAttempts.value + 1}/${maxReconnectAttempts}`)
           reconnectAttempts.value++
           setTimeout(connect, reconnectDelay)
         } else {
@@ -75,12 +78,12 @@ export function useWebSocket(url) {
       }
 
       ws.value.onerror = (err) => {
-        console.error(`WebSocket error: ${url}`, err)
+        logger.error(`Error: ${url}`, err)
         error.value = 'Erreur de connexion WebSocket'
       }
 
     } catch (err) {
-      console.error('Error creating WebSocket:', err)
+      logger.error('Error creating WebSocket:', err)
       error.value = err.message
     }
   }
@@ -98,7 +101,7 @@ export function useWebSocket(url) {
     if (ws.value && isConnected.value) {
       ws.value.send(JSON.stringify(data))
     } else {
-      console.warn('WebSocket not connected. Cannot send:', data)
+      logger.warn('Not connected. Cannot send:', data)
     }
   }
 
@@ -109,7 +112,7 @@ export function useWebSocket(url) {
           const data = JSON.parse(event.data)
           callback(data)
         } catch (err) {
-          console.error('Error parsing WebSocket message:', err)
+          logger.error('Error parsing message:', err)
         }
       }
     }
@@ -198,10 +201,10 @@ export function useSessionWebSocket(sessionId = null) {
         }
         break
       case 'connection_established':
-        console.log('Session WebSocket connected:', data.message)
+        logger.log('Session connected:', data.message)
         break
       case 'error':
-        console.error('Session WebSocket error:', data.message)
+        logger.error('Session error:', data.message)
         break
     }
   }

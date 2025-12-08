@@ -144,6 +144,7 @@
 import { ref, onMounted } from 'vue'
 import MainLayout from '@/components/Layout/MainLayout.vue'
 import { logsService } from '@/services/api'
+import { logger } from '@/utils/logger'
 
 const logs = ref([])
 const loading = ref(true)
@@ -184,7 +185,7 @@ async function loadLogs() {
       logs.value = response.data
     }
   } catch (err) {
-    console.error('Erreur chargement logs:', err)
+    logger.error('Erreur chargement logs:', err)
   } finally {
     loading.value = false
   }

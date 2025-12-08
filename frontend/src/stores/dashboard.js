@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { utilisateursService, postesService, sessionsService } from '@/services/api'
+import { logger } from '@/utils/logger'
 
 export const useDashboardStore = defineStore('dashboard', () => {
   // State
@@ -46,7 +47,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       }
     } catch (err) {
       error.value = err.message || 'Erreur lors du chargement des statistiques'
-      console.error('Erreur stats:', err)
+      logger.error('Erreur stats:', err)
     } finally {
       loading.value = false
     }

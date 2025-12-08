@@ -413,6 +413,7 @@ import ConfirmModal from '@/components/common/ConfirmModal.vue'
 import SessionDetailModal from '@/components/sessions/SessionDetailModal.vue'
 import { sessionsService, utilisateursService, postesService, extensionRequestsService } from '@/services/api'
 import { useToast } from '@/composables/useToast'
+import { logger } from '@/utils/logger'
 
 const { success, error: toastError } = useToast()
 
@@ -477,7 +478,7 @@ async function loadSessions() {
     // Handle both array and paginated response
     sessions.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (err) {
-    console.error('Erreur chargement sessions:', err)
+    logger.error('Erreur chargement sessions:', err)
   } finally {
     loading.value = false
   }
@@ -496,7 +497,7 @@ async function openCreateModal() {
     availableUsers.value = users.data
     availablePostes.value = postes.data
   } catch (err) {
-    console.error('Erreur chargement données:', err)
+    logger.error('Erreur chargement données:', err)
   }
 }
 
@@ -559,7 +560,7 @@ async function handleAddTime() {
     loadSessions()
   } catch (err) {
     toastError('Erreur lors de l\'ajout de temps')
-    console.error(err)
+    logger.error(err)
   }
 }
 
@@ -586,7 +587,7 @@ async function confirmTerminateSession() {
     loadSessions()
   } catch (err) {
     toastError('Erreur lors de la terminaison de la session')
-    console.error(err)
+    logger.error(err)
   } finally {
     showConfirmModal.value = false
     sessionToTerminate.value = null
@@ -602,7 +603,7 @@ async function viewDetails(session) {
     const response = await sessionsService.getById(session.id)
     detailSession.value = response.data
   } catch (err) {
-    console.error('Erreur chargement détails session:', err)
+    logger.error('Erreur chargement détails session:', err)
     toastError('Erreur lors du chargement des détails')
     showDetailModal.value = false
   }
@@ -658,7 +659,7 @@ async function loadPendingExtensions() {
     const response = await extensionRequestsService.getPending()
     pendingExtensions.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (err) {
-    console.error('Erreur chargement demandes prolongation:', err)
+    logger.error('Erreur chargement demandes prolongation:', err)
   }
 }
 
@@ -675,7 +676,7 @@ async function respondToExtension(id, approve) {
     await Promise.all([loadPendingExtensions(), loadSessions()])
   } catch (err) {
     toastError('Erreur lors de la réponse')
-    console.error(err)
+    logger.error(err)
   } finally {
     respondingExtension.value = null
   }

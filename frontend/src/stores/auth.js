@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authService } from '@/services/api'
+import { logger } from '@/utils/logger'
 
 /**
  * Décode un token JWT et retourne son payload
@@ -19,7 +20,7 @@ function decodeJWT(token) {
     )
     return JSON.parse(jsonPayload)
   } catch (e) {
-    console.error('Erreur lors du décodage du JWT:', e)
+    logger.error('Erreur lors du décodage du JWT:', e)
     return null
   }
 }

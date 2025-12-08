@@ -163,6 +163,7 @@ import MainLayout from '@/components/Layout/MainLayout.vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { sessionsService, postesService } from '@/services/api'
 import { useDashboardWebSocket } from '@/composables/useWebSocket'
+import { logger } from '@/utils/logger'
 
 const dashboardStore = useDashboardStore()
 const { stats: wsStats, isConnected, error: wsError, connect, disconnect } = useDashboardWebSocket()
@@ -193,7 +194,7 @@ async function loadData() {
     sessionsActives.value = sessions.data
     postesDisponibles.value = postes.data
   } catch (error) {
-    console.error('Erreur chargement dashboard:', error)
+    logger.error('Erreur chargement dashboard:', error)
   } finally {
     loading.value = false
   }
@@ -215,7 +216,7 @@ watch(wsStats, (newStats) => {
 // Observer l'état de connexion WebSocket
 watch(isConnected, (connected) => {
   if (!connected && wsError.value) {
-    console.warn('WebSocket disconnected, falling back to HTTP polling')
+    logger.warn('WebSocket disconnected, falling back to HTTP polling')
     // Fallback vers HTTP polling si WebSocket échoue
     if (!refreshInterval) {
       refreshInterval = setInterval(loadData, 30000)

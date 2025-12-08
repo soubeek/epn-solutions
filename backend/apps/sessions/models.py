@@ -4,7 +4,7 @@ Modèle Session pour la gestion des sessions utilisateurs
 
 import secrets
 import string
-from django.db import models
+from django.db import models, transaction
 from django.core.validators import MinValueValidator
 from django.utils import timezone
 from django.conf import settings
@@ -200,8 +200,9 @@ class Session(TimeStampedModel):
             details=f"{secondes // 60} minutes ajoutées à la session {self.code_acces}"
         )
 
+    @transaction.atomic
     def demarrer(self):
-        """Démarre la session"""
+        """Démarre la session (transaction atomique)"""
         self.statut = 'active'
         self.debut_session = timezone.now()
         self.save(update_fields=['statut', 'debut_session', 'updated_at'])
@@ -227,9 +228,10 @@ class Session(TimeStampedModel):
             details=f"Session {self.code_acces} démarrée sur {self.poste.nom}"
         )
 
+    @transaction.atomic
     def terminer(self, operateur, raison='fermeture_normale'):
         """
-        Termine la session
+        Termine la session (transaction atomique)
 
         Args:
             operateur: Nom de l'opérateur effectuant l'action
@@ -279,9 +281,10 @@ class Session(TimeStampedModel):
                 details=f"Session {self.code_acces} reprise"
             )
 
+    @transaction.atomic
     def decremente_temps(self, secondes=1):
         """
-        Décrémente le temps restant
+        Décrémente le temps restant (transaction atomique)
         Utilisé par les tâches Celery
         """
         if self.temps_restant > 0:
@@ -383,9 +386,10 @@ class ExtensionRequest(TimeStampedModel):
         """Convertit les minutes en secondes"""
         return self.minutes_requested * 60
 
+    @transaction.atomic
     def approve(self, admin_username, message=None):
         """
-        Approuve la demande de prolongation.
+        Approuve la demande de prolongation (transaction atomique).
         Ajoute le temps à la session.
         """
         if self.statut != 'pending':

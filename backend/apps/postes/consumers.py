@@ -109,6 +109,9 @@ class ClientConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         """Réception d'un message du client"""
+        import logging
+        logger = logging.getLogger(__name__)
+
         try:
             data = json.loads(text_data)
             message_type = data.get('type')
@@ -131,10 +134,18 @@ class ClientConsumer(AsyncWebsocketConsumer):
             else:
                 await self.send_error(f"Type de message inconnu: {message_type}")
 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON received: {e}")
             await self.send_error("Format JSON invalide")
-        except Exception as e:
-            await self.send_error(f"Erreur: {str(e)}")
+        except KeyError as e:
+            logger.warning(f"Missing required field: {e}")
+            await self.send_error(f"Champ requis manquant: {e}")
+        except ValueError as e:
+            logger.warning(f"Invalid value: {e}")
+            await self.send_error(f"Valeur invalide: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Connection error: {e}")
+            await self.send_error("Erreur de connexion")
 
     async def handle_heartbeat(self, data):
         """Heartbeat du client"""
@@ -371,36 +382,50 @@ class ClientConsumer(AsyncWebsocketConsumer):
         """
         from apps.sessions.models import Session
         from django.conf import settings
+        import logging
+        logger = logging.getLogger(__name__)
 
         try:
             code = code.upper().strip()
+            logger.info(f"[VALIDATE] Code: {code}, MAC client: {mac_address}")
+
             session = Session.objects.get(code_acces=code)
+            logger.info(f"[VALIDATE] Session trouvée: id={session.id}, statut={session.statut}, poste={session.poste.nom}, poste_mac={session.poste.mac_address}")
 
             is_reconnection = False
 
             # Vérifier le statut de la session
             if session.statut == 'en_attente':
                 # Nouvelle session - OK
+                logger.info("[VALIDATE] Session en_attente - OK pour nouveau démarrage")
                 pass
             elif session.statut == 'active':
                 # Reconnexion - uniquement autorisée sur le même poste
                 poste_match = False
+                logger.info(f"[VALIDATE] Session active - self.poste={self.poste}, DEBUG={settings.DEBUG}")
 
                 if self.poste and session.poste_id == self.poste.id:
                     poste_match = True
+                    logger.info("[VALIDATE] Match par self.poste.id")
                 elif settings.DEBUG and mac_address:
                     # En mode dev, vérifier par MAC si poste non identifié
                     mac_upper = mac_address.upper()
-                    if session.poste.mac_address and session.poste.mac_address.upper() == mac_upper:
+                    poste_mac = session.poste.mac_address.upper() if session.poste.mac_address else None
+                    logger.info(f"[VALIDATE] Comparaison MAC: client='{mac_upper}' vs poste='{poste_mac}'")
+                    if poste_mac and poste_mac == mac_upper:
                         poste_match = True
-                        # Identifier le poste pour les futures requêtes
                         self.poste = session.poste
+                        logger.info("[VALIDATE] Match par MAC!")
+                    else:
+                        logger.warning(f"[VALIDATE] MAC mismatch!")
 
                 if not poste_match:
+                    logger.warning("[VALIDATE] Pas de match - refusé")
                     return None  # Pas le bon poste
                 is_reconnection = True
             else:
                 # Autres statuts (terminee, expiree, suspendue) - refusé
+                logger.warning(f"[VALIDATE] Statut non autorisé: {session.statut}")
                 return None
 
             # Vérifier que la session est pour ce poste (si authentifié et nouvelle session)

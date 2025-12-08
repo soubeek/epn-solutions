@@ -99,11 +99,20 @@ class LogViewSet(viewsets.ReadOnlyModelViewSet):
 
         GET /api/logs/recent/
         Params:
-            - hours: nombre d'heures (défaut: 24)
-            - limit: nombre max de résultats (défaut: 100)
+            - hours: nombre d'heures (défaut: 24, max: 720 = 30 jours)
+            - limit: nombre max de résultats (défaut: 100, max: 1000)
         """
-        hours = int(request.query_params.get('hours', 24))
-        limit = int(request.query_params.get('limit', 100))
+        try:
+            hours = int(request.query_params.get('hours', 24))
+            hours = max(1, min(hours, 720))  # Entre 1 et 720 heures (30 jours)
+        except (ValueError, TypeError):
+            hours = 24
+
+        try:
+            limit = int(request.query_params.get('limit', 100))
+            limit = max(1, min(limit, 1000))  # Entre 1 et 1000
+        except (ValueError, TypeError):
+            limit = 100
 
         cutoff = timezone.now() - timedelta(hours=hours)
         logs = Log.objects.filter(created_at__gte=cutoff)[:limit]
@@ -157,8 +166,12 @@ class LogViewSet(viewsets.ReadOnlyModelViewSet):
             if 'date_fin' in serializer.validated_data:
                 queryset = queryset.filter(created_at__lte=serializer.validated_data['date_fin'])
 
-            # Limiter les résultats
-            limit = int(request.query_params.get('limit', 1000))
+            # Limiter les résultats (max 5000)
+            try:
+                limit = int(request.query_params.get('limit', 1000))
+                limit = max(1, min(limit, 5000))
+            except (ValueError, TypeError):
+                limit = 1000
             queryset = queryset[:limit]
 
             result_serializer = LogListSerializer(queryset, many=True)
@@ -202,9 +215,13 @@ class LogViewSet(viewsets.ReadOnlyModelViewSet):
 
         GET /api/logs/errors/
         Params:
-            - hours: nombre d'heures (défaut: 24)
+            - hours: nombre d'heures (défaut: 24, max: 720)
         """
-        hours = int(request.query_params.get('hours', 24))
+        try:
+            hours = int(request.query_params.get('hours', 24))
+            hours = max(1, min(hours, 720))
+        except (ValueError, TypeError):
+            hours = 24
         cutoff = timezone.now() - timedelta(hours=hours)
 
         logs = Log.objects.filter(

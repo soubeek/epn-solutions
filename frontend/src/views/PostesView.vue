@@ -579,6 +579,7 @@ import { ref, computed, onMounted } from 'vue'
 import MainLayout from '@/components/Layout/MainLayout.vue'
 import { postesService } from '@/services/api'
 import { useToast } from '@/composables/useToast'
+import { logger } from '@/utils/logger'
 
 const { success, error: toastError } = useToast()
 
@@ -657,7 +658,7 @@ async function loadPostes() {
     // Handle both array and paginated response
     postes.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (err) {
-    console.error('Erreur chargement postes:', err)
+    logger.error('Erreur chargement postes:', err)
   } finally {
     loading.value = false
   }
@@ -700,7 +701,7 @@ async function handleSubmit() {
   } catch (err) {
     submitError.value = err.response?.data?.detail || 'Erreur lors de l\'enregistrement'
     toastError(submitError.value)
-    console.error(err)
+    logger.error(err)
   } finally {
     submitting.value = false
   }
@@ -713,7 +714,7 @@ async function marquerDisponible(poste) {
     loadPostes()
   } catch (err) {
     toastError('Erreur lors du changement de statut')
-    console.error(err)
+    logger.error(err)
   }
 }
 
@@ -724,7 +725,7 @@ async function marquerMaintenance(poste) {
     loadPostes()
   } catch (err) {
     toastError('Erreur lors du changement de statut')
-    console.error(err)
+    logger.error(err)
   }
 }
 
@@ -744,7 +745,7 @@ async function deletePoste(poste) {
     loadPostes()
   } catch (err) {
     toastError(err.response?.data?.detail || 'Erreur lors de la suppression')
-    console.error(err)
+    logger.error(err)
   }
 }
 
@@ -828,7 +829,7 @@ async function handleValidate() {
   } catch (err) {
     validateError.value = err.response?.data?.error || err.response?.data?.detail || 'Erreur lors de la validation'
     toastError(validateError.value)
-    console.error(err)
+    logger.error(err)
   } finally {
     validating.value = false
   }
@@ -845,7 +846,7 @@ async function rejectPoste(poste) {
     loadPostes()
   } catch (err) {
     toastError('Erreur lors du rejet du poste')
-    console.error(err)
+    logger.error(err)
   }
 }
 
@@ -876,7 +877,7 @@ async function generateToken() {
   } catch (err) {
     tokenError.value = err.response?.data?.error || err.response?.data?.detail || 'Erreur lors de la génération du token'
     toastError(tokenError.value)
-    console.error(err)
+    logger.error(err)
   } finally {
     generatingToken.value = false
   }
@@ -888,7 +889,7 @@ async function copyToken() {
     success('Token copié dans le presse-papier')
   } catch (err) {
     toastError('Erreur lors de la copie')
-    console.error(err)
+    logger.error(err)
   }
 }
 
@@ -959,7 +960,7 @@ async function sendCommand(command) {
   } catch (err) {
     commandError.value = err.response?.data?.error || err.response?.data?.detail || 'Erreur lors de l\'envoi de la commande'
     toastError(commandError.value)
-    console.error(err)
+    logger.error(err)
   } finally {
     sendingCommand.value = false
   }
@@ -981,7 +982,7 @@ async function unlockKiosk() {
   } catch (err) {
     commandError.value = err.response?.data?.error || err.response?.data?.detail || 'Erreur lors du déverrouillage'
     toastError(commandError.value)
-    console.error(err)
+    logger.error(err)
   } finally {
     sendingCommand.value = false
   }

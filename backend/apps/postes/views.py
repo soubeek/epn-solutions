@@ -2,6 +2,8 @@
 ViewSets pour l'app Postes
 """
 
+import re
+import hmac
 import secrets
 from datetime import timedelta
 
@@ -11,6 +13,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django_ratelimit.decorators import ratelimit
 
 from .models import Poste
 from django.conf import settings
@@ -258,11 +262,13 @@ class PosteViewSet(viewsets.ModelViewSet):
             'message': f'Token généré pour {poste.nom}. Saisissez ce token sur le client pour l\'enregistrer. Valide 24h.'
         })
 
+    @method_decorator(ratelimit(key='ip', rate='3/m', method='POST', block=True))
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register_client(self, request):
         """
         Enregistre un client et délivre un certificat TLS.
         Cet endpoint est appelé par le client Rust lors de sa première configuration.
+        Rate-limited: 3 requêtes par minute par IP.
 
         POST /api/postes/register_client/
         Body: {
@@ -445,18 +451,41 @@ class PosteViewSet(viewsets.ModelViewSet):
         return request.META.get('REMOTE_ADDR')
 
     def _validate_discovery_token(self, token):
-        """Vérifie si le token de découverte est valide"""
-        valid_tokens = []
-        if settings.DISCOVERY_TOKEN:
-            valid_tokens.append(settings.DISCOVERY_TOKEN)
-        if settings.DISCOVERY_TOKEN_PREVIOUS:
-            valid_tokens.append(settings.DISCOVERY_TOKEN_PREVIOUS)
-        return token in valid_tokens
+        """
+        Vérifie si le token de découverte est valide.
+        Utilise hmac.compare_digest pour éviter les timing attacks.
+        """
+        if not token:
+            return False
 
+        # Vérifier contre le token actuel
+        if settings.DISCOVERY_TOKEN:
+            if hmac.compare_digest(token, settings.DISCOVERY_TOKEN):
+                return True
+
+        # Vérifier contre le token précédent (rotation gracieuse)
+        if settings.DISCOVERY_TOKEN_PREVIOUS:
+            if hmac.compare_digest(token, settings.DISCOVERY_TOKEN_PREVIOUS):
+                return True
+
+        return False
+
+    def _validate_mac_address(self, mac_address):
+        """
+        Valide le format d'une adresse MAC.
+        Formats acceptés: 00:11:22:33:44:55 ou 00-11-22-33-44-55
+        """
+        if not mac_address:
+            return False
+        mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+        return bool(re.match(mac_pattern, mac_address))
+
+    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True))
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def discover(self, request):
         """
         Endpoint de découverte client.
+        Rate-limited: 5 requêtes par minute par IP.
         Crée un poste en attente de validation si il n'existe pas.
 
         POST /api/postes/discover/
@@ -484,7 +513,14 @@ class PosteViewSet(viewsets.ModelViewSet):
         mac_address = data['mac_address']
         ip_address = data.get('ip_address') or self._get_client_ip(request)
 
-        # Vérifier le token de découverte
+        # Valider le format de l'adresse MAC
+        if not self._validate_mac_address(mac_address):
+            return Response(
+                {'error': 'Format d\'adresse MAC invalide'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Vérifier le token de découverte (timing-safe)
         if not self._validate_discovery_token(discovery_token):
             return Response(
                 {'error': 'Token de découverte invalide'},
@@ -564,11 +600,13 @@ class PosteViewSet(viewsets.ModelViewSet):
                 'message': 'Poste découvert, en attente de validation par un administrateur'
             }, status=status.HTTP_201_CREATED)
 
+    @method_decorator(ratelimit(key='ip', rate='30/m', method='POST', block=True))
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def check_discovery_status(self, request):
         """
         Vérifie le statut d'un client découvert.
         Le client peut polluer cet endpoint pour savoir s'il a été validé.
+        Rate-limited: 30 requêtes par minute par IP (polling frequent autorisé).
 
         POST /api/postes/check_discovery_status/
         Body: {

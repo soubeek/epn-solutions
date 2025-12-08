@@ -11,7 +11,17 @@ from decouple import config, Csv
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='change-me-in-production-with-secure-random-key')
+# En production, SECRET_KEY doit etre defini dans les variables d'environnement
+_secret_key_default = 'dev-only-insecure-key-do-not-use-in-production'
+SECRET_KEY = config('SECRET_KEY', default=_secret_key_default)
+
+# Verifier que SECRET_KEY est defini en production
+import sys
+if not config('DEBUG', default=False, cast=bool) and SECRET_KEY == _secret_key_default:
+    print("ERREUR CRITIQUE: SECRET_KEY non defini en production!", file=sys.stderr)
+    print("Definissez SECRET_KEY dans vos variables d'environnement.", file=sys.stderr)
+    print("Generer avec: python -c \"from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())\"", file=sys.stderr)
+    sys.exit(1)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)

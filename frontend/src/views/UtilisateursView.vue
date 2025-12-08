@@ -263,6 +263,7 @@ import ConfirmModal from '@/components/common/ConfirmModal.vue'
 import UserDetailModal from '@/components/utilisateurs/UserDetailModal.vue'
 import { utilisateursService } from '@/services/api'
 import { useToast } from '@/composables/useToast'
+import { logger } from '@/utils/logger'
 
 const { success, error: toastError } = useToast()
 
@@ -318,7 +319,7 @@ async function loadUtilisateurs() {
     utilisateurs.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (err) {
     error.value = 'Erreur lors du chargement des utilisateurs'
-    console.error(err)
+    logger.error(err)
   } finally {
     loading.value = false
   }
@@ -397,7 +398,7 @@ async function handleSubmit() {
   } catch (err) {
     submitError.value = err.response?.data?.detail || 'Erreur lors de l\'enregistrement'
     toastError(submitError.value)
-    console.error(err)
+    logger.error(err)
   } finally {
     submitting.value = false
   }
@@ -424,7 +425,7 @@ async function confirmDeleteUser() {
     loadUtilisateurs()
   } catch (err) {
     toastError('Erreur lors de la suppression de l\'utilisateur')
-    console.error(err)
+    logger.error(err)
   } finally {
     showConfirmModal.value = false
     userToDelete.value = null
