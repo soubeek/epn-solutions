@@ -399,27 +399,37 @@ Ces paramètres sont appliqués via `gsettings` pour l'utilisateur `epn`.
 
 ### Configuration GNOME (manuelle)
 
-Si vous n'utilisez pas le script d'installation, exécutez ces commandes :
+Si vous n'utilisez pas le script d'installation, ajoutez ces paramètres au fichier dconf :
 
 ```bash
-# En tant qu'utilisateur epn
-sudo -u epn dbus-launch gsettings set org.gnome.shell.extensions.dash-to-dock autohide true
-sudo -u epn dbus-launch gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false
-sudo -u epn dbus-launch gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true
+# Ajouter au fichier /etc/dconf/db/local.d/00-epn-lockdown
+sudo tee -a /etc/dconf/db/local.d/00-epn-lockdown << 'EOF'
 
-# Désactiver les raccourcis système
-sudo -u epn dbus-launch gsettings set org.gnome.desktop.wm.keybindings switch-applications "[]"
-sudo -u epn dbus-launch gsettings set org.gnome.desktop.wm.keybindings switch-windows "[]"
-sudo -u epn dbus-launch gsettings set org.gnome.mutter overlay-key ""
-sudo -u epn dbus-launch gsettings set org.gnome.shell.keybindings toggle-overview "[]"
+[org/gnome/shell/extensions/dash-to-dock]
+autohide=true
+dock-fixed=false
+intellihide=true
+show-apps-button=false
 
-# Désactiver le bouton Activités
-sudo -u epn dbus-launch gsettings set org.gnome.shell.extensions.dash-to-dock show-apps-button false
+[org/gnome/desktop/wm/keybindings]
+switch-applications=@as []
+switch-windows=@as []
 
-# Désactiver l'écran de verrouillage GNOME
-sudo -u epn dbus-launch gsettings set org.gnome.desktop.screensaver lock-enabled false
-sudo -u epn dbus-launch gsettings set org.gnome.desktop.session idle-delay 0
+[org/gnome/shell/keybindings]
+toggle-overview=@as []
+
+[org/gnome/desktop/screensaver]
+lock-enabled=false
+
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+EOF
+
+# Recompiler la base
+sudo dconf update
 ```
+
+**Note**: L'ancienne méthode avec `dbus-launch gsettings` ne fonctionne pas de manière fiable via `sudo`. Utilisez toujours les keyfiles dconf pour les configurations système.
 
 ### Sécurité
 
@@ -493,28 +503,59 @@ sudo ./scripts/configure-lockdown.sh --remove
 | Notifications masquées | `dconf: show-banners` |
 | USB storage bloqué | Règle udev |
 
-### Configuration manuelle
+### Configuration manuelle (méthode keyfiles)
+
+Le script utilise les **keyfiles dconf** (fichiers système) plutôt que `dbus-launch` pour une meilleure fiabilité.
 
 Si vous préférez configurer manuellement les restrictions :
 
 ```bash
-# En tant qu'utilisateur epn
-DBUS_LAUNCH="dbus-launch --exit-with-session"
+# 1. Créer les répertoires
+sudo mkdir -p /etc/dconf/db/local.d/locks
+sudo mkdir -p /etc/dconf/profile
 
-# Désactiver le terminal
-sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/lockdown/disable-command-line true
+# 2. Créer le fichier de restrictions
+sudo tee /etc/dconf/db/local.d/00-epn-lockdown << 'EOF'
+[org/gnome/mutter]
+overlay-key=''
 
-# Désactiver le changement d'utilisateur
-sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/lockdown/disable-user-switching true
+[org/gnome/desktop/wm/keybindings]
+panel-run-dialog=@as []
 
-# Désactiver la déconnexion
-sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/lockdown/disable-log-out true
+[org/gnome/desktop/interface]
+enable-hot-corners=false
 
-# Désactiver la touche Super
-sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/mutter/overlay-key "''"
+[org/gnome/desktop/lockdown]
+disable-command-line=true
+disable-user-switching=true
+disable-log-out=true
+disable-print-setup=true
 
-# Désactiver Alt+F2
-sudo -u epn $DBUS_LAUNCH dconf write /org/gnome/desktop/wm/keybindings/panel-run-dialog "['']"
+[org/gnome/desktop/notifications]
+show-banners=false
+EOF
+
+# 3. Créer le fichier de verrouillage (empêche les modifications utilisateur)
+sudo tee /etc/dconf/db/local.d/locks/epn-lockdown << 'EOF'
+/org/gnome/mutter/overlay-key
+/org/gnome/desktop/wm/keybindings/panel-run-dialog
+/org/gnome/desktop/interface/enable-hot-corners
+/org/gnome/desktop/lockdown/disable-command-line
+/org/gnome/desktop/lockdown/disable-user-switching
+/org/gnome/desktop/lockdown/disable-log-out
+EOF
+
+# 4. Créer le profil dconf (si absent)
+sudo tee /etc/dconf/profile/user << 'EOF'
+user-db:user
+system-db:local
+EOF
+
+# 5. Compiler la base dconf
+sudo dconf update
+
+# 6. Redémarrer la session
+sudo systemctl restart gdm
 ```
 
 ### Blocage USB (optionnel)
@@ -549,10 +590,13 @@ sudo ./scripts/configure-lockdown.sh --remove
 Ou manuellement :
 
 ```bash
-# Reset toutes les clés dconf
-sudo -u epn dbus-launch dconf reset /org/gnome/desktop/lockdown/disable-command-line
-sudo -u epn dbus-launch dconf reset /org/gnome/desktop/lockdown/disable-user-switching
-sudo -u epn dbus-launch dconf reset /org/gnome/desktop/lockdown/disable-log-out
-sudo -u epn dbus-launch dconf reset /org/gnome/mutter/overlay-key
-sudo -u epn dbus-launch dconf reset /org/gnome/desktop/wm/keybindings/panel-run-dialog
+# Supprimer les fichiers de restrictions
+sudo rm /etc/dconf/db/local.d/00-epn-lockdown
+sudo rm /etc/dconf/db/local.d/locks/epn-lockdown
+
+# Recompiler la base dconf
+sudo dconf update
+
+# Redémarrer la session
+sudo systemctl restart gdm
 ```

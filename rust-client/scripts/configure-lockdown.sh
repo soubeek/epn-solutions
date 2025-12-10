@@ -89,12 +89,6 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Verifier que dconf est installe
-    if ! command -v dconf &> /dev/null; then
-        log_error "dconf n'est pas installe. Installez-le avec: sudo apt install dconf-cli"
-        exit 1
-    fi
-
     # Verifier que l'utilisateur existe
     if ! id "$KIOSK_USER" &>/dev/null; then
         log_warning "L'utilisateur '$KIOSK_USER' n'existe pas."
@@ -121,67 +115,101 @@ create_kiosk_user() {
     log_success "Utilisateur '$KIOSK_USER' cree"
 }
 
-# Applique les restrictions dconf pour l'utilisateur
+# Chemins des fichiers dconf systeme
+DCONF_DB_DIR="/etc/dconf/db/local.d"
+DCONF_LOCKS_DIR="/etc/dconf/db/local.d/locks"
+DCONF_PROFILE_DIR="/etc/dconf/profile"
+DCONF_LOCKDOWN_FILE="00-epn-lockdown"
+DCONF_LOCKS_FILE="epn-lockdown"
+
+# Applique les restrictions dconf via keyfiles systeme
 apply_dconf_restrictions() {
-    log_info "Application des restrictions dconf pour '$KIOSK_USER'..."
+    log_info "Application des restrictions dconf (methode keyfiles)..."
 
-    DBUS_LAUNCH="dbus-launch --exit-with-session"
+    # Creer les repertoires
+    mkdir -p "$DCONF_DB_DIR"
+    mkdir -p "$DCONF_LOCKS_DIR"
+    mkdir -p "$DCONF_PROFILE_DIR"
 
-    # Fonction helper pour dconf en tant que l'utilisateur kiosque
-    run_dconf() {
-        sudo -u "$KIOSK_USER" $DBUS_LAUNCH dconf "$@" 2>/dev/null || true
-    }
+    # Creer le fichier de restrictions selon le profil
+    log_info "  - Creation du fichier de restrictions..."
 
-    # Restrictions lockdown GNOME
-    log_info "  - Desactivation ligne de commande..."
-    run_dconf write /org/gnome/desktop/lockdown/disable-command-line true
+    cat > "$DCONF_DB_DIR/$DCONF_LOCKDOWN_FILE" << 'DCONF_EOF'
+# EPN Solutions - Restrictions kiosque
+# Genere automatiquement par configure-lockdown.sh
 
-    log_info "  - Desactivation changement utilisateur..."
-    run_dconf write /org/gnome/desktop/lockdown/disable-user-switching true
+[org/gnome/mutter]
+overlay-key=''
 
-    log_info "  - Desactivation deconnexion..."
-    run_dconf write /org/gnome/desktop/lockdown/disable-log-out true
+[org/gnome/desktop/wm/keybindings]
+panel-run-dialog=@as []
 
-    log_info "  - Desactivation configuration impression..."
-    run_dconf write /org/gnome/desktop/lockdown/disable-print-setup true
+[org/gnome/desktop/interface]
+enable-hot-corners=false
 
-    # Restrictions bureau
-    log_info "  - Desactivation touche Super..."
-    run_dconf write /org/gnome/mutter/overlay-key "''"
+[org/gnome/desktop/lockdown]
+disable-command-line=true
+disable-user-switching=true
+disable-log-out=true
+disable-print-setup=true
 
-    log_info "  - Desactivation hot corners..."
-    run_dconf write /org/gnome/desktop/interface/enable-hot-corners false
+[org/gnome/desktop/notifications]
+show-banners=false
+DCONF_EOF
 
-    log_info "  - Desactivation raccourci Alt+F2..."
-    run_dconf write /org/gnome/desktop/wm/keybindings/panel-run-dialog "['']"
+    log_info "  - Creation du fichier de verrouillage..."
 
-    log_info "  - Desactivation notifications..."
-    run_dconf write /org/gnome/desktop/notifications/show-banners false
+    # Creer le fichier de locks (empeche les modifications utilisateur)
+    cat > "$DCONF_LOCKS_DIR/$DCONF_LOCKS_FILE" << 'LOCKS_EOF'
+/org/gnome/mutter/overlay-key
+/org/gnome/desktop/wm/keybindings/panel-run-dialog
+/org/gnome/desktop/interface/enable-hot-corners
+/org/gnome/desktop/lockdown/disable-command-line
+/org/gnome/desktop/lockdown/disable-user-switching
+/org/gnome/desktop/lockdown/disable-log-out
+/org/gnome/desktop/lockdown/disable-print-setup
+/org/gnome/desktop/notifications/show-banners
+LOCKS_EOF
+
+    # Creer le profil dconf si necessaire
+    if [[ ! -f "$DCONF_PROFILE_DIR/user" ]]; then
+        log_info "  - Creation du profil dconf..."
+        cat > "$DCONF_PROFILE_DIR/user" << 'PROFILE_EOF'
+user-db:user
+system-db:local
+PROFILE_EOF
+    fi
+
+    # Compiler la base dconf
+    log_info "  - Compilation de la base dconf..."
+    dconf update
 
     log_success "Restrictions dconf appliquees"
+    log_info "Note: Redemarrer la session pour activer les restrictions"
 }
 
 # Retire les restrictions dconf
 remove_dconf_restrictions() {
-    log_info "Retrait des restrictions dconf pour '$KIOSK_USER'..."
+    log_info "Retrait des restrictions dconf..."
 
-    DBUS_LAUNCH="dbus-launch --exit-with-session"
+    # Supprimer le fichier de restrictions
+    if [[ -f "$DCONF_DB_DIR/$DCONF_LOCKDOWN_FILE" ]]; then
+        rm "$DCONF_DB_DIR/$DCONF_LOCKDOWN_FILE"
+        log_info "  - Fichier de restrictions supprime"
+    fi
 
-    run_dconf() {
-        sudo -u "$KIOSK_USER" $DBUS_LAUNCH dconf "$@" 2>/dev/null || true
-    }
+    # Supprimer le fichier de locks
+    if [[ -f "$DCONF_LOCKS_DIR/$DCONF_LOCKS_FILE" ]]; then
+        rm "$DCONF_LOCKS_DIR/$DCONF_LOCKS_FILE"
+        log_info "  - Fichier de verrouillage supprime"
+    fi
 
-    # Reset toutes les cles lockdown
-    run_dconf reset /org/gnome/desktop/lockdown/disable-command-line
-    run_dconf reset /org/gnome/desktop/lockdown/disable-user-switching
-    run_dconf reset /org/gnome/desktop/lockdown/disable-log-out
-    run_dconf reset /org/gnome/desktop/lockdown/disable-print-setup
-    run_dconf reset /org/gnome/mutter/overlay-key
-    run_dconf reset /org/gnome/desktop/interface/enable-hot-corners
-    run_dconf reset /org/gnome/desktop/wm/keybindings/panel-run-dialog
-    run_dconf reset /org/gnome/desktop/notifications/show-banners
+    # Recompiler la base dconf
+    log_info "  - Recompilation de la base dconf..."
+    dconf update
 
     log_success "Restrictions dconf retirees"
+    log_info "Note: Redemarrer la session pour appliquer les changements"
 }
 
 # Configure l'auto-login GDM
@@ -365,24 +393,48 @@ show_status() {
         echo -e "Blocage USB:          ${YELLOW}Inactif${NC}"
     fi
 
-    # Restrictions dconf
+    # Restrictions dconf (keyfiles)
     echo ""
     echo "Restrictions dconf:"
 
-    DBUS_LAUNCH="dbus-launch --exit-with-session"
-    check_dconf() {
-        local val=$(sudo -u "$KIOSK_USER" $DBUS_LAUNCH dconf read "$1" 2>/dev/null)
-        if [[ "$val" == "true" ]] || [[ "$val" == "''" ]]; then
-            echo -e "  $2: ${GREEN}Oui${NC}"
-        else
-            echo -e "  $2: ${YELLOW}Non${NC}"
-        fi
-    }
+    if [[ -f "$DCONF_DB_DIR/$DCONF_LOCKDOWN_FILE" ]]; then
+        echo -e "  Fichier restrictions:   ${GREEN}Present${NC}"
 
-    check_dconf "/org/gnome/desktop/lockdown/disable-command-line" "Terminal desactive"
-    check_dconf "/org/gnome/desktop/lockdown/disable-user-switching" "Changement user desactive"
-    check_dconf "/org/gnome/desktop/lockdown/disable-log-out" "Deconnexion desactivee"
-    check_dconf "/org/gnome/mutter/overlay-key" "Touche Super desactivee"
+        # Verifier le contenu
+        if grep -q "overlay-key=''" "$DCONF_DB_DIR/$DCONF_LOCKDOWN_FILE" 2>/dev/null; then
+            echo -e "  Touche Super:           ${GREEN}Desactivee${NC}"
+        else
+            echo -e "  Touche Super:           ${YELLOW}Non configuree${NC}"
+        fi
+
+        if grep -q "disable-command-line=true" "$DCONF_DB_DIR/$DCONF_LOCKDOWN_FILE" 2>/dev/null; then
+            echo -e "  Terminal:               ${GREEN}Desactive${NC}"
+        else
+            echo -e "  Terminal:               ${YELLOW}Non configure${NC}"
+        fi
+
+        if grep -q "disable-log-out=true" "$DCONF_DB_DIR/$DCONF_LOCKDOWN_FILE" 2>/dev/null; then
+            echo -e "  Deconnexion:            ${GREEN}Desactivee${NC}"
+        else
+            echo -e "  Deconnexion:            ${YELLOW}Non configuree${NC}"
+        fi
+    else
+        echo -e "  Fichier restrictions:   ${YELLOW}Absent${NC}"
+        echo -e "  (aucune restriction dconf configuree)"
+    fi
+
+    if [[ -f "$DCONF_LOCKS_DIR/$DCONF_LOCKS_FILE" ]]; then
+        echo -e "  Verrouillage:           ${GREEN}Actif${NC}"
+    else
+        echo -e "  Verrouillage:           ${YELLOW}Inactif${NC}"
+    fi
+
+    # Base dconf compilee
+    if [[ -f "/etc/dconf/db/local" ]]; then
+        echo -e "  Base dconf:             ${GREEN}Compilee${NC}"
+    else
+        echo -e "  Base dconf:             ${YELLOW}Non compilee${NC}"
+    fi
 
     echo ""
 }
