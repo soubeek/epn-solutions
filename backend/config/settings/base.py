@@ -365,6 +365,6 @@ CA_ORGANIZATION_NAME = config('CA_ORGANIZATION_NAME', default='EPN')
 # ============== Configuration découverte automatique clients ==============
 # Token partagé pour l'auto-découverte des clients
 # Générer avec: python -c "import secrets; print(secrets.token_urlsafe(32))"
-DISCOVERY_TOKEN = config('DISCOVERY_TOKEN', default=None)
+DISCOVERY_TOKEN = config('EPN_DISCOVERY_TOKEN', default=config('DISCOVERY_TOKEN', default=None))
 # Token précédent pour rotation gracieuse (optionnel)
 DISCOVERY_TOKEN_PREVIOUS = config('DISCOVERY_TOKEN_PREVIOUS', default=None)

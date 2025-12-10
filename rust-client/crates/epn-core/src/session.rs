@@ -4,6 +4,7 @@ use crate::cleanup::CleanupManager;
 use crate::config::Config;
 use crate::gaming::GamingManager;
 use crate::inactivity::{InactivityMonitor, InactivityState};
+use crate::registration::RegistrationClient;
 use crate::types::{ClientError, ClientMessage, RemoteCommandType, Result, ServerMessage, SessionInfo, WarningLevel};
 use crate::websocket::{TlsConfig, WsClient};
 use epn_system::{get_screen_locker, get_logout, get_notifier, Urgency};
@@ -40,21 +41,55 @@ impl SessionManager {
 
         // Vérifier si le client est enregistré (a des certificats)
         let cert_store = CertificateStore::new()?;
-        let is_registered = cert_store.is_registered();
+        let mut is_registered = cert_store.is_registered();
+
+        // Si non enregistré, lancer le processus de découverte automatique
+        if !is_registered {
+            tracing::info!("Client non enregistré, lancement de la découverte automatique...");
+
+            // Vérifier qu'on a un token de découverte
+            let discovery_token = config.discovery_token.as_ref().ok_or_else(|| {
+                ClientError::Other(
+                    "Aucun token de découverte configuré (discovery_token dans config.yaml ou EPN_DISCOVERY_TOKEN)".to_string()
+                )
+            })?;
+
+            // Créer le client d'enregistrement
+            let reg_client = RegistrationClient::new(&config.server_url)?;
+
+            // Lancer la découverte et l'enregistrement automatique
+            // Poll toutes les 5 secondes, timeout de 10 minutes
+            match reg_client.auto_discover_and_register(discovery_token, 5, 600).await {
+                Ok(poste_info) => {
+                    tracing::info!(
+                        "✓ Enregistrement réussi! Poste: {} (ID: {})",
+                        poste_info.nom,
+                        poste_info.id
+                    );
+                    is_registered = true;
+                }
+                Err(e) => {
+                    tracing::error!("Échec de l'enregistrement automatique: {}", e);
+                    return Err(e);
+                }
+            }
+        }
+
+        // Recharger le cert_store après enregistrement potentiel
+        let cert_store = CertificateStore::new()?;
 
         // Construire l'URL WebSocket pour les clients
         let ws_url = format!("{}/ws/client/", config.ws_url);
         tracing::info!("Connexion WebSocket: {}", ws_url);
 
-        // Connecter au serveur WebSocket
+        // Connecter au serveur WebSocket avec mTLS
         let mut ws_client = if is_registered {
-            // Utiliser mTLS si enregistré
             tracing::info!("Client enregistré, utilisation de mTLS");
             let tls_config = TlsConfig::from_store(&cert_store)?;
             WsClient::connect_with_tls(&ws_url, tls_config).await?
         } else {
-            // Mode développement sans certificat
-            tracing::warn!("Client non enregistré, connexion sans authentification");
+            // Ce cas ne devrait plus arriver, mais on garde le fallback
+            tracing::warn!("Client non enregistré après découverte, connexion sans authentification");
             WsClient::connect(&ws_url).await?
         };
 

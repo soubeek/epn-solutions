@@ -15,15 +15,18 @@ class DashboardConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         """Connexion au WebSocket"""
-        # Vérifier l'authentification
+        from django.conf import settings
+
         user = self.scope.get('user')
-        if not user or not user.is_authenticated:
-            # Rejeter la connexion si non authentifié
-            await self.close(code=4401)
-            return
+
+        # En mode DEBUG, permettre les connexions non authentifiées
+        if not settings.DEBUG:
+            if not user or not user.is_authenticated:
+                await self.close(code=4401)
+                return
 
         self.room_group_name = 'dashboard'
-        self.user = user
+        self.user = user if user and user.is_authenticated else None
 
         # Rejoindre le groupe dashboard
         await self.channel_layer.group_add(
@@ -42,10 +45,11 @@ class DashboardConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         """Déconnexion du WebSocket"""
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        if hasattr(self, 'room_group_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
 
     async def receive(self, text_data):
         """Réception de message du client"""
@@ -132,10 +136,11 @@ class SessionConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         """Déconnexion du WebSocket"""
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        if hasattr(self, 'room_group_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
 
     async def receive(self, text_data):
         """Réception de message du client"""
