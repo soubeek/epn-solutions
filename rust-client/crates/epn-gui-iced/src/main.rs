@@ -7,11 +7,17 @@ use epn_core::{Config, SessionInfo, SessionManager};
 use epn_system::{get_notifier, Urgency};
 use iced::keyboard::{self, Key, Modifiers};
 use iced::time::{self, Duration};
-use iced::widget::{button, column, container, progress_bar, text, text_input, Space};
+use iced::widget::{
+    button, column, container, progress_bar, row, text, text_input, Space,
+};
 use iced::window;
 use iced::{Center, Element, Fill, Size, Subscription, Task, Theme};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+// Constantes pour le mode widget
+const WIDGET_WIDTH: f32 = 320.0;
+const WIDGET_HEIGHT: f32 = 100.0;
 
 /// Point d'entree de l'application
 pub fn main() -> iced::Result {
@@ -75,7 +81,9 @@ pub fn main() -> iced::Result {
 enum Screen {
     Login,
     Session,
+    Widget,
     Expired,
+    AdminUnlock,
 }
 
 /// Etat de l'application
@@ -88,6 +96,7 @@ struct EpnApp {
 
     // Ecran actuel
     screen: Screen,
+    previous_screen: Option<Screen>,
 
     // Ecran Login
     code_input: String,
@@ -99,9 +108,19 @@ struct EpnApp {
     remaining_time: u64,
     total_duration: u64,
 
+    // Mode widget
+    widget_mode: bool,
+
+    // Dialogue Admin
+    admin_password_input: String,
+    admin_error: Option<String>,
+
     // Etat connexion
     is_connected: bool,
     is_initializing: bool,
+
+    // Mode kiosque actif
+    kiosk_active: bool,
 }
 
 /// Messages de l'application
@@ -122,6 +141,11 @@ enum Message {
     EndSession,
     SessionEnded,
 
+    // Widget mode
+    SwitchToWidget,
+    SwitchToFullscreen,
+    WidgetModeSet,
+
     // Navigation
     ReturnToLogin,
 
@@ -130,6 +154,14 @@ enum Message {
 
     // Fenetre
     RequestFullscreen,
+    WindowResized,
+
+    // Admin
+    ShowAdminDialog,
+    AdminPasswordChanged(String),
+    ValidateAdminPassword,
+    CancelAdminDialog,
+    KioskUnlocked,
 }
 
 impl EpnApp {
@@ -138,19 +170,25 @@ impl EpnApp {
         let session_manager = Arc::new(Mutex::new(None));
         let session_manager_clone = session_manager.clone();
         let config_clone = config.clone();
+        let kiosk_mode = config.kiosk_mode;
 
         let app = Self {
             config,
             session_manager,
             screen: Screen::Login,
+            previous_screen: None,
             code_input: String::new(),
             error_message: None,
             is_validating: false,
             session_info: None,
             remaining_time: 0,
             total_duration: 0,
+            widget_mode: false,
+            admin_password_input: String::new(),
+            admin_error: None,
             is_connected: false,
             is_initializing: true,
+            kiosk_active: kiosk_mode,
         };
 
         // Lancer l'initialisation en arriere-plan
@@ -271,6 +309,16 @@ impl EpnApp {
                         self.session_info = Some(session);
                         self.screen = Screen::Session;
                         self.code_input.clear();
+
+                        // En mode kiosque, basculer vers le widget apres un court delai
+                        if self.config.kiosk_mode {
+                            return Task::perform(
+                                async {
+                                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                                },
+                                |_| Message::SwitchToWidget,
+                            );
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Erreur demarrage session: {}", e);
@@ -282,7 +330,7 @@ impl EpnApp {
 
             // Tick du timer (chaque seconde)
             Message::Tick => {
-                if self.screen != Screen::Session {
+                if self.screen != Screen::Session && self.screen != Screen::Widget {
                     return Task::none();
                 }
 
@@ -338,9 +386,44 @@ impl EpnApp {
                 Task::none()
             }
 
+            // Basculer vers le mode widget
+            Message::SwitchToWidget => {
+                tracing::info!("Basculement vers le mode widget");
+                self.widget_mode = true;
+                self.screen = Screen::Widget;
+
+                // Redimensionner la fenetre en mode widget
+                window::get_latest().and_then(|id| {
+                    Task::batch([
+                        window::change_mode(id, window::Mode::Windowed),
+                        window::resize(id, Size::new(WIDGET_WIDTH, WIDGET_HEIGHT)),
+                    ])
+                })
+            }
+
+            // Revenir en plein ecran
+            Message::SwitchToFullscreen => {
+                tracing::info!("Retour en mode plein ecran");
+                self.widget_mode = false;
+                self.screen = Screen::Session;
+
+                window::get_latest().and_then(|id| {
+                    window::change_mode(id, window::Mode::Fullscreen)
+                })
+            }
+
+            Message::WidgetModeSet => {
+                Task::none()
+            }
+
             // Fin de session
             Message::EndSession => {
                 tracing::info!("Fin de session");
+
+                // Revenir en plein ecran si en mode widget
+                if self.widget_mode {
+                    self.widget_mode = false;
+                }
 
                 self.show_notification(
                     "Session Expiree",
@@ -349,6 +432,8 @@ impl EpnApp {
                 );
 
                 let session_manager = self.session_manager.clone();
+                let kiosk_mode = self.config.kiosk_mode;
+
                 Task::perform(
                     async move {
                         let guard = session_manager.lock().await;
@@ -356,8 +441,14 @@ impl EpnApp {
                             manager.cleanup_only();
                         }
                     },
-                    |_| Message::SessionEnded,
-                )
+                    move |_| Message::SessionEnded,
+                ).chain(if kiosk_mode {
+                    window::get_latest().and_then(|id| {
+                        window::change_mode(id, window::Mode::Fullscreen)
+                    })
+                } else {
+                    Task::none()
+                })
             }
 
             // Session terminee
@@ -388,14 +479,15 @@ impl EpnApp {
                 if modifiers.control() && modifiers.alt() && modifiers.shift() {
                     if let Key::Character(c) = &key {
                         if c.to_lowercase() == "k" {
-                            tracing::info!("Tentative de deverrouillage admin");
-                            // TODO: Implementer le dialogue de mot de passe
+                            if self.kiosk_active && self.config.kiosk_admin_password.is_some() {
+                                return Task::done(Message::ShowAdminDialog);
+                            }
                         }
                     }
                 }
 
                 // Bloquer Escape en mode kiosque
-                if self.config.kiosk_mode {
+                if self.kiosk_active {
                     if key == Key::Named(keyboard::key::Named::Escape) {
                         return Task::none();
                     }
@@ -410,6 +502,79 @@ impl EpnApp {
                     window::change_mode(id, window::Mode::Fullscreen)
                 })
             }
+
+            Message::WindowResized => Task::none(),
+
+            // Afficher le dialogue admin
+            Message::ShowAdminDialog => {
+                tracing::info!("Affichage du dialogue admin");
+                self.previous_screen = Some(self.screen.clone());
+                self.screen = Screen::AdminUnlock;
+                self.admin_password_input.clear();
+                self.admin_error = None;
+                Task::none()
+            }
+
+            // Saisie mot de passe admin
+            Message::AdminPasswordChanged(value) => {
+                self.admin_password_input = value;
+                self.admin_error = None;
+                Task::none()
+            }
+
+            // Valider mot de passe admin
+            Message::ValidateAdminPassword => {
+                if let Some(ref expected) = self.config.kiosk_admin_password {
+                    if self.admin_password_input == *expected {
+                        tracing::info!("Mot de passe admin correct - deverrouillage");
+                        return Task::done(Message::KioskUnlocked);
+                    } else {
+                        tracing::warn!("Mot de passe admin incorrect");
+                        self.admin_error = Some("Mot de passe incorrect".to_string());
+                    }
+                }
+                Task::none()
+            }
+
+            // Annuler dialogue admin
+            Message::CancelAdminDialog => {
+                if let Some(prev) = self.previous_screen.take() {
+                    self.screen = prev;
+                } else {
+                    self.screen = Screen::Login;
+                }
+                self.admin_password_input.clear();
+                self.admin_error = None;
+                Task::none()
+            }
+
+            // Kiosque deverrouille
+            Message::KioskUnlocked => {
+                tracing::info!("Mode kiosque desactive");
+                self.kiosk_active = false;
+                self.admin_password_input.clear();
+                self.admin_error = None;
+
+                if let Some(prev) = self.previous_screen.take() {
+                    self.screen = prev;
+                } else {
+                    self.screen = Screen::Login;
+                }
+
+                self.show_notification(
+                    "Mode kiosque desactive",
+                    "Vous pouvez maintenant fermer l'application",
+                    Urgency::Normal,
+                );
+
+                // Sortir du plein ecran
+                window::get_latest().and_then(|id| {
+                    Task::batch([
+                        window::change_mode(id, window::Mode::Windowed),
+                        window::resize(id, Size::new(800.0, 600.0)),
+                    ])
+                })
+            }
         }
     }
 
@@ -418,7 +583,9 @@ impl EpnApp {
         let content = match self.screen {
             Screen::Login => self.view_login(),
             Screen::Session => self.view_session(),
+            Screen::Widget => self.view_widget(),
             Screen::Expired => self.view_expired(),
+            Screen::AdminUnlock => self.view_admin_dialog(),
         };
 
         container(content)
@@ -431,28 +598,21 @@ impl EpnApp {
 
     /// Vue de l'ecran de login
     fn view_login(&self) -> Element<'_, Message> {
-        let title = text("EPN Client")
-            .size(40);
+        let title = text("EPN Client").size(40);
 
-        let subtitle = text("Espace Public Numerique")
-            .size(20);
+        let subtitle = text("Espace Public Numerique").size(20);
 
         let status = if self.is_initializing {
-            text("Connexion au serveur...")
-                .size(14)
+            text("Connexion au serveur...").size(14)
         } else if self.is_connected {
-            text("Connecte au serveur")
-                .size(14)
+            text("Connecte au serveur").size(14)
         } else {
-            text("Non connecte")
-                .size(14)
+            text("Non connecte").size(14)
         };
 
-        let server_info = text(format!("Serveur: {}", self.config.server_url))
-            .size(12);
+        let server_info = text(format!("Serveur: {}", self.config.server_url)).size(12);
 
-        let code_label = text("Entrez votre code d'acces:")
-            .size(16);
+        let code_label = text("Entrez votre code d'acces:").size(16);
 
         let code_field = text_input("CODE", &self.code_input)
             .on_input(Message::CodeInputChanged)
@@ -462,8 +622,7 @@ impl EpnApp {
             .width(300);
 
         let validate_button = if self.is_validating {
-            button(text("Validation...").size(18))
-                .padding([15, 40])
+            button(text("Validation...").size(18)).padding([15, 40])
         } else {
             button(text("Valider").size(18))
                 .on_press(Message::ValidateCode)
@@ -497,7 +656,7 @@ impl EpnApp {
         .into()
     }
 
-    /// Vue de l'ecran de session
+    /// Vue de l'ecran de session (plein ecran)
     fn view_session(&self) -> Element<'_, Message> {
         let session = self.session_info.as_ref();
 
@@ -509,20 +668,16 @@ impl EpnApp {
             .map(|s| s.workstation.as_str())
             .unwrap_or("Poste");
 
-        let title = text("Session Active")
-            .size(30);
+        let title = text("Session Active").size(30);
 
-        let user_info = text(format!("Utilisateur: {}", user_name))
-            .size(18);
+        let user_info = text(format!("Utilisateur: {}", user_name)).size(18);
 
-        let workstation_info = text(format!("Poste: {}", workstation))
-            .size(18);
+        let workstation_info = text(format!("Poste: {}", workstation)).size(18);
 
         // Formatage du temps restant
         let minutes = self.remaining_time / 60;
         let seconds = self.remaining_time % 60;
-        let time_display = text(format!("{:02}:{:02}", minutes, seconds))
-            .size(80);
+        let time_display = text(format!("{:02}:{:02}", minutes, seconds)).size(80);
 
         // Calcul du pourcentage
         let percentage = if self.total_duration > 0 {
@@ -543,14 +698,20 @@ impl EpnApp {
 
         // Message d'avertissement
         let warning = if self.remaining_time <= 60 {
-            text("ATTENTION: Il vous reste moins d'une minute!")
-                .size(18)
+            text("ATTENTION: Il vous reste moins d'une minute!").size(18)
         } else if self.remaining_time <= 300 {
-            text(format!("Attention: Il vous reste {} minutes", minutes))
-                .size(16)
+            text(format!("Attention: Il vous reste {} minutes", minutes)).size(16)
         } else {
-            text("")
-                .size(16)
+            text("").size(16)
+        };
+
+        // Bouton pour basculer vers le widget (si mode kiosque)
+        let widget_button = if self.config.kiosk_mode {
+            button(text("Mode widget").size(14))
+                .on_press(Message::SwitchToWidget)
+                .padding([10, 20])
+        } else {
+            button(text("").size(14)).padding([10, 20])
         };
 
         column![
@@ -566,22 +727,65 @@ impl EpnApp {
             total_time,
             Space::with_height(20),
             warning,
+            Space::with_height(20),
+            widget_button,
         ]
         .spacing(5)
         .align_x(Center)
         .into()
     }
 
+    /// Vue du widget (petite fenetre flottante)
+    fn view_widget(&self) -> Element<'_, Message> {
+        // Formatage du temps restant
+        let minutes = self.remaining_time / 60;
+        let seconds = self.remaining_time % 60;
+
+        let time_display = text(format!("{:02}:{:02}", minutes, seconds)).size(32);
+
+        // Calcul du pourcentage
+        let percentage = if self.total_duration > 0 {
+            (self.remaining_time as f32 / self.total_duration as f32) * 100.0
+        } else {
+            0.0
+        };
+
+        let progress = progress_bar(0.0..=100.0, percentage)
+            .width(Fill)
+            .height(8);
+
+        // Bouton pour revenir en plein ecran
+        let expand_button = button(text("+").size(16))
+            .on_press(Message::SwitchToFullscreen)
+            .padding([5, 10]);
+
+        // Layout compact pour le widget
+        let content = column![
+            row![
+                time_display,
+                Space::with_width(Fill),
+                expand_button,
+            ]
+            .spacing(10)
+            .align_y(Center),
+            progress,
+        ]
+        .spacing(8)
+        .padding(10);
+
+        container(content)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+
     /// Vue de l'ecran d'expiration
     fn view_expired(&self) -> Element<'_, Message> {
-        let title = text("Session Terminee")
-            .size(40);
+        let title = text("Session Terminee").size(40);
 
-        let message = text("Votre temps est ecoule.")
-            .size(20);
+        let message = text("Votre temps est ecoule.").size(20);
 
-        let subtitle = text("Merci d'avoir utilise nos services.")
-            .size(16);
+        let subtitle = text("Merci d'avoir utilise nos services.").size(16);
 
         let return_button = button(text("Nouvelle session").size(18))
             .on_press(Message::ReturnToLogin)
@@ -601,23 +805,66 @@ impl EpnApp {
         .into()
     }
 
+    /// Vue du dialogue de mot de passe admin
+    fn view_admin_dialog(&self) -> Element<'_, Message> {
+        let title = text("Deverrouillage Admin").size(24);
+
+        let instruction = text("Entrez le mot de passe administrateur:").size(14);
+
+        let password_field = text_input("Mot de passe", &self.admin_password_input)
+            .on_input(Message::AdminPasswordChanged)
+            .on_submit(Message::ValidateAdminPassword)
+            .secure(true)
+            .padding(10)
+            .size(16)
+            .width(250);
+
+        let error_text = if let Some(ref error) = self.admin_error {
+            text(error).size(14)
+        } else {
+            text("").size(14)
+        };
+
+        let buttons = row![
+            button(text("Annuler").size(14))
+                .on_press(Message::CancelAdminDialog)
+                .padding([10, 20]),
+            Space::with_width(20),
+            button(text("Valider").size(14))
+                .on_press(Message::ValidateAdminPassword)
+                .padding([10, 20])
+                .style(button::primary),
+        ];
+
+        column![
+            title,
+            Space::with_height(20),
+            instruction,
+            Space::with_height(10),
+            password_field,
+            Space::with_height(10),
+            error_text,
+            Space::with_height(20),
+            buttons,
+        ]
+        .spacing(5)
+        .align_x(Center)
+        .into()
+    }
+
     /// Abonnements (timer, clavier)
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![];
 
-        // Timer chaque seconde si en session
-        if self.screen == Screen::Session {
-            subscriptions.push(
-                time::every(Duration::from_secs(1)).map(|_| Message::Tick)
-            );
+        // Timer chaque seconde si en session ou widget
+        if self.screen == Screen::Session || self.screen == Screen::Widget {
+            subscriptions.push(time::every(Duration::from_secs(1)).map(|_| Message::Tick));
         }
 
         // Ecoute des touches clavier
-        subscriptions.push(
-            keyboard::on_key_press(|key, modifiers| {
-                Some(Message::KeyPressed(key, modifiers))
-            })
-        );
+        subscriptions.push(keyboard::on_key_press(|key, modifiers| {
+            Some(Message::KeyPressed(key, modifiers))
+        }));
 
         Subscription::batch(subscriptions)
     }
