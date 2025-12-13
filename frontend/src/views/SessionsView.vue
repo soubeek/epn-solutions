@@ -245,8 +245,8 @@
               <label class="label">Utilisateur *</label>
               <select v-model="createForm.utilisateur" class="input" required>
                 <option value="">Sélectionner un utilisateur</option>
-                <option v-for="user in availableUsers" :key="user.id" :value="user.id">
-                  {{ user.full_name }}
+                <option v-for="user in availableUsers.filter(u => u && u.id)" :key="user.id" :value="user.id">
+                  {{ user.full_name || user.nom || 'Utilisateur' }}
                 </option>
               </select>
             </div>
@@ -494,10 +494,13 @@ async function openCreateModal() {
       utilisateursService.getAll(),
       postesService.getDisponibles()
     ])
-    availableUsers.value = users.data
-    availablePostes.value = postes.data
+    // Handle both array and paginated response
+    availableUsers.value = Array.isArray(users.data) ? users.data : (users.data?.results || [])
+    availablePostes.value = Array.isArray(postes.data) ? postes.data : (postes.data?.results || [])
   } catch (err) {
     logger.error('Erreur chargement données:', err)
+    availableUsers.value = []
+    availablePostes.value = []
   }
 }
 

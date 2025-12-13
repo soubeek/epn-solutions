@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('sessions', '0001_initial'),
+        ('poste_sessions', '0001_initial'),
     ]
 
     operations = [
@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
                 ('responded_by', models.CharField(blank=True, max_length=100, null=True, verbose_name='Répondu par')),
                 ('responded_at', models.DateTimeField(blank=True, null=True, verbose_name='Date de réponse')),
                 ('response_message', models.CharField(blank=True, max_length=255, null=True, verbose_name='Message de réponse')),
-                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='extension_requests', to='sessions.session', verbose_name='Session')),
+                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='extension_requests', to='poste_sessions.session', verbose_name='Session')),
             ],
             options={
                 'verbose_name': 'Demande de prolongation',
