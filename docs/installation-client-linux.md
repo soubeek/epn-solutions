@@ -600,3 +600,45 @@ sudo dconf update
 # Redémarrer la session
 sudo systemctl restart gdm
 ```
+
+## Client Iced (Alternative expérimentale)
+
+Une version alternative du client utilisant le framework Iced (100% Rust, sans WebView) est disponible en version POC.
+
+### Avantages d'Iced
+
+| Aspect | Tauri (actuel) | Iced (POC) |
+|--------|---------------|------------|
+| Dépendances | WebKitGTK | Aucune (GPU natif) |
+| Taille binaire | ~15-20 MB | ~5-10 MB |
+| Langage UI | HTML/CSS/JS | 100% Rust |
+| Performance | Bonne | Excellente |
+
+### Compilation du client Iced
+
+```bash
+cd rust-client
+cargo build --release -p epn-gui-iced
+```
+
+Le binaire sera dans `target/release/epn-client-iced`.
+
+### Fonctionnalités implémentées
+
+- Écran de login avec saisie de code
+- Écran de session avec timer temps réel
+- Barre de progression
+- Notifications système (5 min, 1 min)
+- Mode kiosque (plein écran)
+- Gestion des raccourcis clavier
+- Thème sombre
+
+### Limitations actuelles
+
+- Mode widget non implémenté
+- Always-on-top à valider sur Wayland
+- Pas de dialogue de mot de passe admin (Ctrl+Alt+Shift+K)
+
+### Utilisation
+
+Remplacer `epn-gui` par `epn-client-iced` dans les scripts d'installation et la configuration systemd si vous souhaitez tester cette version.

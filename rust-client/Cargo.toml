@@ -6,6 +6,7 @@ members = [
     "crates/epn-core",
     "crates/epn-system",
     "crates/epn-gui",
+    "crates/epn-gui-iced",
     "crates/epn-service",
 ]
 resolver = "2"
