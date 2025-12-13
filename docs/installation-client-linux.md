@@ -630,14 +630,15 @@ Le binaire sera dans `target/release/epn-client-iced`.
 - Barre de progression
 - Notifications système (5 min, 1 min)
 - Mode kiosque (plein écran)
+- Mode widget (fenêtre flottante 320x100px)
+- Basculement fullscreen/widget
+- Dialogue de déverrouillage admin (Ctrl+Alt+Shift+K)
 - Gestion des raccourcis clavier
 - Thème sombre
 
 ### Limitations actuelles
 
-- Mode widget non implémenté
-- Always-on-top à valider sur Wayland
-- Pas de dialogue de mot de passe admin (Ctrl+Alt+Shift+K)
+- Always-on-top à valider sur certains environnements Wayland
 
 ### Utilisation
 
